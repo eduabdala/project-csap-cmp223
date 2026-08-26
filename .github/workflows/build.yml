@@ -1,0 +1,89 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slides:
+    name: Slides (PDF)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar PDFs dos slides
+        run: npm run pdf
+
+      - name: Publicar artefato dos slides
+        uses: actions/upload-artifact@v4
+        with:
+          name: slides-pdf
+          path: dist/slides/*.pdf
+          if-no-files-found: error
+          retention-days: 90
+
+  artigo:
+    name: Artigo (LaTeX)
+    runs-on: ubuntu-latest
+    # Só roda quando o diretório do artigo existir com algum .tex.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar se existe artigo para compilar
+        id: check
+        run: |
+          if compgen -G "artigo/*.tex" > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "Nenhum .tex em artigo/ - etapa ignorada."
+          fi
+
+      - name: Compilar LaTeX
+        if: steps.check.outputs.found == 'true'
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: artigo/main.tex
+          latexmk_use_lualatex: false
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+
+      - name: Publicar artefato do artigo
+        if: steps.check.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artigo-pdf
+          path: '*.pdf'
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Release dos entregáveis
+    needs: [slides, artigo]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar artefatos
+        uses: actions/download-artifact@v4
+        with:
+          path: entregaveis
+
+      - name: Criar release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: entregaveis/**/*.pdf
+          generate_release_notes: true

@@ -1,6 +1,6 @@
 ---
 marp: true
-theme: inf-ufrgs-balanced
+theme: layout-test
 style: @import 'layout-test.css';
 paginate: true
 _paginate: false

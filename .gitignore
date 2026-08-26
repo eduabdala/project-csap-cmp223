@@ -1,1 +1,14 @@
 marp-ppt/*.pdf
+node_modules/
+dist/
+
+# LaTeX (artefatos de compilação)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
