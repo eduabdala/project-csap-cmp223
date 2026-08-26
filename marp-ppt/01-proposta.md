@@ -20,39 +20,41 @@ Porto Alegre, 2026
 
 ## Objeto Computacional (DESC)
 
-- **Objeto de Estudo:** Algoritmos de Criptografia Pós-Quântica (PQC) [ex: ML-KEM / ML-DSA].
-- **Domínio de Aplicação:** Dispositivos e nós de IoT com restrições severas de hardware.
-- **Problema:** A transição para PQC exige maior capacidade computacional e de memória em relação aos algoritmos clássicos.
-- **Objetivo:** Avaliar a viabilidade e o custo de memória RAM/Flash ao executar PQC em microcontroladores embarcados.
+- **Objeto de Estudo:** Implementações do algoritmo pós-quântico Kyber-512 (ML-KEM, padrão NIST) em comparação com alternativas leves (ex: CTRU-Light).
+- **Ambiente de Restrição:** Microcontroladores da família megaAVR 0-series (ex: ATmega4808/ATmega4809), operando no limite restrito de 6 KB de SRAM.
+- **Problema:** O padrão global PQC exige milhares de ciclos de clock, gerando dreno severo de bateria e sobrecarga de processamento em hardwares legados.
+- **Objetivo:** Determinar o limite de aplicabilidade do Kyber-512, quantificando o custo energético absoluto e avaliando a margem operacional sistêmica (CPU/Memória livre) para as demais tarefas do sistema (sensoriamento, MQTT, RTOS).
 
 ---
 
 ## Métricas de Desempenho (METR)
 
-- **Footprint de Memória RAM (Pico de Uso):**
-  - Consumo de **Stack** e **Heap** nas etapas de operação.
-- **Tempo de Execução / Ciclos de Clock:**
-  - Latência computacional para realização das operações criptográficas.
-- **Ocupação de Memória Flash (Código):**
-  - Tamanho do binário gerado na ROM do dispositivo.
+- **Consumo Energético (Custo por Operação):**
+  - Medição da degradação de bateria (energia em µJ/operação) nas etapas de KeyGen, Encaps e Decaps.
+- **Margem Operacional Sistêmica (Headroom):**
+  - Fração de tempo de CPU e quantidade de SRAM (bytes) que restam livres para o sistema base.
+- **Tempo de Execução e Latência:**
+  - Ciclos de clock (k-cycles) e latência real de parede (wall-clock).
+- **Footprint de Memória:**
+  - Pico de uso da pilha (Stack Peak) e tamanho do binário gerado na ROM (Code Size).
 
 ---
 
 ## Fatores de Comparação & Variáveis
 
-- **Arquiteturas de Hardware:** [ex: ARM Cortex-M4 vs. RISC-V 32-bit vs. ESP32]
-- **Níveis de Segurança NIST:** [ex: Nível 1 vs. Nível 3 vs. Nível 5]
-- **Flags de Compilação:** [ex: `-O2` vs. `-Os`]
+- **Algoritmos (Padrão vs. Leve):** Kyber-512 (ML-KEM) vs. CTRU-Light.
+- **Estratégias de Implementação:** Código de referência em C puro vs. Assembly otimizado (ex: multiplicação Montgomery).
+- **Alocação de Memória:** Tabelas (LUTs) residentes em Flash (PROGMEM) vs. alocação em Stack/SRAM.
 
 ---
 
 ## Método de Análise e Justificativa (CHOI)
 
-- **Método Selecionado:** Medição Direta em hardware real.
+- **Método Selecionado:** Metodologia Híbrida (Simulação *Cycle-accurate* + Medição Física *Bare-metal*).
 - **Justificativa:**
-  - Captura precisa do comportamento de pilha e limitações físicas de memória em tempo de execução.
-  - Elimina distorções de simuladores quanto a barramentos e latências de memória flash.
-- **Ferramentas Previstas:** Instrumentação de código, contadores de ciclos internos e captura via interface serial/SWD.
+  - Simulação extrai a contagem exata de ciclos instrução por instrução, isolando o custo computacional puro sem intrusão (Efeito do Observador).
+  - Medição física valida a latência real e possibilita a telemetria de energia, preenchendo lacunas de benchmarks puramente teóricos.
+- **Ferramentas Previstas:** Instrumentação elétrica (resistor *shunt* / osciloscópio) para energia, *toggle* de pinos GPIO via analisador lógico para latência, e *Stack Watermarking* para pico de memória.
 
 ---
 

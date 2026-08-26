@@ -1,0 +1,182 @@
+/* @theme inf-ufrgs-claro */
+@import 'default';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+:root {
+  --inf-black: #1A1A1A;
+  --inf-red: #C62828;
+  --inf-gray-light: #F7F7F7;
+  --inf-gray-mid: #ECECEC;
+  --inf-gray-text: #666666;
+  --border-color: #DDDDDD;
+  --text-main: #222222;
+}
+
+/* Configuração Base */
+section {
+  font-family: 'Inter', sans-serif;
+  background-color: #FFFFFF;
+  color: var(--text-main);
+  padding: 60px 70px;
+  font-size: 25px;
+}
+
+/* Tipografia */
+h1, h2, h3 { margin: 0; padding: 0; }
+
+h1 {
+  font-size: 2.6em;
+  font-weight: 700;
+  color: var(--inf-black);
+}
+
+h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--inf-black);
+  border-left: 5px solid var(--inf-red);
+  padding-left: 15px;
+  margin-bottom: 35px;
+}
+
+h3 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--inf-black);
+  margin-bottom: 12px;
+}
+
+strong { color: var(--inf-red); }
+ul { padding-left: 1.2em; }
+ul li { margin-bottom: 10px; }
+ul li::marker { color: var(--inf-red); font-weight: bold; }
+
+footer {
+  font-size: 0.55em;
+  color: var(--inf-gray-text);
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+
+/* --------------------------------------------------
+   BLOCOS DE DESTAQUE (versão clara)
+   -------------------------------------------------- */
+
+/* 1. Capa (Lead) - fundo claro */
+section.lead {
+  background-color: var(--inf-gray-light);
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+section.lead h1,
+section.lead h2,
+section.lead h3 {
+  color: var(--inf-black);
+}
+section.lead h1 {
+  border-left: 6px solid var(--inf-red);
+  padding-left: 20px;
+  margin-bottom: 15px;
+}
+section.lead p {
+  color: var(--inf-gray-text);
+  font-size: 1.1em;
+  padding-left: 26px;
+}
+section.lead strong { color: var(--inf-red); }
+
+/* 2. Slide de ênfase (.dark mantido por compatibilidade) */
+section.dark {
+  background-color: var(--inf-gray-mid);
+  color: var(--text-main);
+}
+section.dark h1,
+section.dark h2,
+section.dark h3 {
+  color: var(--inf-black);
+}
+
+/* 3. Duas Colunas (.split) */
+section.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 40px;
+}
+section.split h2 { grid-column: 1 / -1; }
+section.split .col {
+  background-color: var(--inf-gray-light);
+  padding: 25px;
+  border-top: 4px solid var(--inf-red);
+}
+
+/* 4. Cartões claros (.cards) */
+section.cards { display: grid; grid-template-rows: auto 1fr; }
+section.cards .card-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+}
+section.cards .card {
+  background-color: var(--inf-gray-light);
+  color: var(--text-main);
+  padding: 25px;
+  border: 1px solid var(--border-color);
+  border-top: 4px solid var(--inf-red);
+}
+section.cards .card h1,
+section.cards .card h2,
+section.cards .card h3 {
+  color: var(--inf-black);
+}
+section.cards .card p { font-size: 0.85em; color: var(--inf-gray-text); }
+
+/* 5. Destaque de Métrica (.stat-highlight) */
+section.stat-highlight {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 40px;
+  align-items: center;
+}
+section.stat-highlight h2 { grid-column: 1 / -1; }
+section.stat-highlight .big-number {
+  background-color: var(--inf-gray-light);
+  color: var(--text-main);
+  padding: 30px 20px;
+  text-align: center;
+  border-left: 6px solid var(--inf-red);
+}
+section.stat-highlight .big-number h3 { font-size: 3.5em; color: var(--inf-red); }
+section.stat-highlight .big-number p {
+  margin: 5px 0 0 0;
+  color: var(--inf-gray-text);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* 6. Tabelas claras */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 25px;
+  font-size: 0.85em;
+}
+
+th {
+  background-color: var(--inf-gray-mid);
+  color: var(--inf-black);
+  padding: 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--inf-red);
+}
+
+td {
+  padding: 14px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+tbody tr:nth-child(even) td { background-color: #FBFBFB; }
