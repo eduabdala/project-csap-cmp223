@@ -16,6 +16,8 @@ Subtítulo: Proposta do Trabalho Final (Etapa 1)
 *Computer System Performance Analysis (CMP223)*  
 Porto Alegre, 2026
 
+![logo](logo_inf.png)
+
 ---
 
 ## Objeto Computacional (DESC)
@@ -64,3 +66,5 @@ Porto Alegre, 2026
 
 **Eduardo Silva Abdala**  
 *Instituto de Informática - UFRGS*
+
+![logo](logo_inf.png)

@@ -180,3 +180,13 @@ td {
 }
 
 tbody tr:nth-child(even) td { background-color: #FBFBFB; }
+
+/* 7. Logo institucional inserido via markdown: ![logo](logo_inf.png) */
+section img[alt~='logo'] {
+  position: absolute;
+  right: 60px;
+  bottom: 42px;
+  width: 170px;
+  height: auto;
+}
+section.lead img[alt~='logo'] { width: 200px; }

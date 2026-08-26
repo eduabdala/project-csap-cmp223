@@ -172,3 +172,17 @@ td {
   border-bottom: 1px solid var(--border-color);
   color: var(--text-main);
 }
+
+/* 7. Logo institucional inserido via markdown: ![logo](logo_inf.png) */
+section img[alt~='logo'] {
+  position: absolute;
+  right: 60px;
+  bottom: 42px;
+  width: 170px;
+  height: auto;
+}
+/* Em fundo escuro o logo preto é invertido para branco */
+section.lead img[alt~='logo'],
+section.dark img[alt~='logo'] {
+  filter: invert(1) grayscale(1) brightness(1.6);
+}
