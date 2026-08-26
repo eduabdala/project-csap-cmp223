@@ -1,0 +1,174 @@
+/* @theme inf-ufrgs-balanced */
+@import 'default';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+:root {
+  --inf-black: #111111;
+  --inf-red: #D32F2F;
+  --inf-gray-light: #F5F5F5;
+  --inf-gray-text: #555555;
+  --border-color: #E0E0E0;
+  --text-main: #222222;
+}
+
+/* Configuração Base */
+section {
+  font-family: 'Inter', sans-serif;
+  background-color: #FFFFFF;
+  color: var(--text-main);
+  padding: 60px 70px;
+  font-size: 25px;
+}
+
+/* Tipografia Padrão (Slides Claras) */
+h1, h2, h3 { margin: 0; padding: 0; }
+
+h1 {
+  font-size: 2.6em;
+  font-weight: 700;
+  color: var(--inf-black);
+}
+
+h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--inf-black);
+  border-left: 5px solid var(--inf-red);
+  padding-left: 15px;
+  margin-bottom: 35px;
+}
+
+h3 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--inf-black);
+  margin-bottom: 12px;
+}
+
+strong { color: var(--inf-red); }
+ul { padding-left: 1.2em; }
+ul li { margin-bottom: 10px; }
+ul li::marker { color: var(--inf-black); font-weight: bold; }
+
+footer {
+  font-size: 0.55em;
+  color: var(--inf-gray-text);
+  border-top: 1px solid #E0E0E0;
+  padding-top: 8px;
+}
+
+/* --------------------------------------------------
+   REGRAS PARA ELEMENTOS E SLIDES DE FUNDO ESCURO
+   -------------------------------------------------- */
+
+/* 1. Capa (Lead) - Fundo Escuro Inteiro */
+section.lead {
+  background-color: var(--inf-black);
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* Força textos e títulos brancos na capa */
+section.lead h1, 
+section.lead h2, 
+section.lead h3 {
+  color: #FFFFFF;
+}
+section.lead h1 {
+  border-left: 6px solid var(--inf-red);
+  padding-left: 20px;
+  margin-bottom: 15px;
+}
+section.lead p {
+  color: #AAAAAA;
+  font-size: 1.1em;
+  padding-left: 26px;
+}
+section.lead strong { color: var(--inf-red); }
+
+/* 2. Slide 100% Escuro (caso crie slides com a classe .dark) */
+section.dark {
+  background-color: var(--inf-black);
+  color: #E0E0E0;
+}
+section.dark h1, 
+section.dark h2, 
+section.dark h3 {
+  color: #FFFFFF;
+}
+
+/* 3. Duas Colunas (.split) */
+section.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 40px;
+}
+section.split h2 { grid-column: 1 / -1; }
+section.split .col {
+  background-color: var(--inf-gray-light);
+  padding: 25px;
+  border-top: 4px solid var(--inf-black);
+}
+
+/* 4. Cartões Escuros (.cards) */
+section.cards { display: grid; grid-template-rows: auto 1fr; }
+section.cards .card-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+}
+section.cards .card {
+  background-color: var(--inf-black);
+  color: #FFFFFF;
+  padding: 25px;
+  border-top: 4px solid var(--inf-red);
+}
+/* Força títulos brancos dentro do cartão escuro */
+section.cards .card h1,
+section.cards .card h2,
+section.cards .card h3 { 
+  color: #FFFFFF; 
+}
+section.cards .card p { font-size: 0.85em; color: #CCCCCC; }
+
+/* 5. Destaque de Métrica (.stat-highlight) */
+section.stat-highlight {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 40px;
+  align-items: center;
+}
+section.stat-highlight h2 { grid-column: 1 / -1; }
+section.stat-highlight .big-number {
+  background-color: var(--inf-black);
+  color: #FFFFFF;
+  padding: 30px 20px;
+  text-align: center;
+  border-left: 6px solid var(--inf-red);
+}
+section.stat-highlight .big-number h3 { font-size: 3.5em; color: #FFFFFF; }
+section.stat-highlight .big-number p { margin: 5px 0 0 0; color: #AAAAAA; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px;}
+
+/* 6. Tabelas com Alto Contraste */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 25px;
+  font-size: 0.85em;
+}
+
+th {
+  background-color: #141414;
+  color: #FFFFFF;
+  padding: 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--inf-red);
+}
+
+td {
+  padding: 14px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+}
