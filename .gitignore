@@ -2,6 +2,11 @@ marp-ppt/*.pdf
 node_modules/
 dist/
 
+# Diagramas: cache temporário do mermaid-cli.
+# diagrams/out/ fica versionado para o LaTeX/Marp não depender do build.
+diagrams/.cache/
+diagrams/out/
+
 # LaTeX (artefatos de compilação)
 *.aux
 *.log

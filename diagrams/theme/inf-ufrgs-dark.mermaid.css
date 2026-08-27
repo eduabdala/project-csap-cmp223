@@ -1,0 +1,91 @@
+/* Ajustes finos aplicados sobre o SVG gerado pelo Mermaid (tema escuro INF-UFRGS). */
+
+svg { background: #111111; }
+
+.nodeLabel, .edgeLabel, .label, .titleText, text {
+  font-family: 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif !important;
+}
+
+.node rect,
+.node polygon,
+.node path {
+  stroke-width: 2px;
+  rx: 0 !important;
+  ry: 0 !important;
+}
+
+.node.destaque > rect,
+.node.destaque > polygon,
+.node.destaque > path {
+  fill: #FFFFFF !important;
+  stroke: #D32F2F !important;
+  stroke-width: 3px;
+}
+.node.destaque .nodeLabel,
+.node.destaque .nodeLabel * { color: #111111 !important; fill: #111111 !important; }
+
+.node.alerta > rect,
+.node.alerta > polygon,
+.node.alerta > path {
+  fill: #D32F2F !important;
+  stroke: #FF6659 !important;
+}
+.node.alerta .nodeLabel,
+.node.alerta .nodeLabel * { color: #FFFFFF !important; fill: #FFFFFF !important; }
+
+.node.neutro > rect,
+.node.neutro > polygon,
+.node.neutro > path {
+  fill: #111111 !important;
+  stroke: #777777 !important;
+  stroke-dasharray: 4 3;
+}
+
+.edgePath .path, .flowchart-link { stroke-width: 2px; }
+.marker { fill: #AAAAAA; stroke: #AAAAAA; }
+
+.cluster rect { stroke-width: 1.5px; stroke-dasharray: 5 4; rx: 0 !important; ry: 0 !important; }
+.cluster .cluster-label .nodeLabel,
+.cluster text { font-weight: 700; }
+
+.edgeLabel rect, .edgeLabel .labelBkg { fill: #111111 !important; opacity: 1 !important; }
+.edgeLabel .edgeLabel { font-size: 0.85em; }
+
+/* --------------------------------------------------
+   sequenceDiagram: overrides para o renderer novo.
+   -------------------------------------------------- */
+.actor {
+  fill: #1E1E1E !important;
+  stroke: #D32F2F !important;
+  rx: 0 !important;
+  ry: 0 !important;
+}
+text.actor, text.actor > tspan {
+  fill: #FFFFFF !important;
+  stroke: none !important;
+  font-weight: 700;
+}
+.actor-line { stroke: #777777 !important; stroke-width: 1px !important; }
+
+.messageLine0 { stroke: #AAAAAA !important; stroke-width: 2px !important; }
+.messageLine1 { stroke: #AAAAAA !important; stroke-width: 2px !important; stroke-dasharray: 3 3 !important; }
+text.messageText { fill: #E0E0E0 !important; stroke: none !important; }
+
+.note { fill: #222222 !important; stroke: #D32F2F !important; rx: 0 !important; ry: 0 !important; }
+text.noteText, text.noteText > tspan { fill: #E0E0E0 !important; stroke: none !important; }
+
+.activation0, .activation1, .activation2 { fill: #D32F2F !important; stroke: #FF6659 !important; }
+.labelBox { fill: #D32F2F !important; stroke: #D32F2F !important; }
+.labelText, .labelText > tspan { fill: #FFFFFF !important; stroke: none !important; }
+.loopText, .loopText > tspan { fill: #E0E0E0 !important; stroke: none !important; }
+.loopLine { stroke: #D32F2F !important; }
+.sequenceNumber { fill: #111111 !important; }
+
+marker path, marker line { stroke: #AAAAAA !important; }
+#arrowhead path, marker#arrowhead path { fill: #AAAAAA !important; }
+
+/* pieChart: fatias opacas e rótulos legíveis */
+.pieCircle, .pieOuterCircle { opacity: 1 !important; }
+.slice { fill: #111111 !important; stroke: none !important; font-weight: 700; }
+.legend text { fill: #E0E0E0 !important; }
+.pieTitleText { fill: #FFFFFF !important; font-weight: 700; }
