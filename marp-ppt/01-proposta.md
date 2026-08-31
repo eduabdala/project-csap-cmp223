@@ -9,7 +9,7 @@ footer: 'CMP223 - Proposta de Trabalho Final | INF-UFRGS'
 
 <!-- class: lead -->
 
-# Análise de Desempenho e Consumo Energético de Algoritmos de Criptografia Pós-Quântica em Microcontroladores de 8 bits
+# Análise de Desempenho e Consumo Energético de Algoritmos PQC em Microcontroladores de 8 bits
 Proposta do Trabalho Final
 
 **Eduardo Silva Abdala**  
@@ -29,7 +29,7 @@ Porto Alegre, 2026
 
 ---
 
-## Métricas de Desempenho
+## Métricas
 
 - **Consumo Energético ($E_{\text{op}}$ em $\mu\text{J}$):**
   - *Registro:* Queda de tensão em resistor *shunt* via osciloscópio, com *trigger* em pino GPIO.
@@ -47,7 +47,7 @@ Porto Alegre, 2026
 
 ---
 
-## Fatores de Comparação & Variáveis
+## Fatores de Comparação e Variáveis
 
 - **Algoritmos:** Kyber-512 (ML-KEM) vs. CTRU-Light.
 - **Estratégias de Implementação:** Código de referência em C puro vs. Assembly otimizado.
