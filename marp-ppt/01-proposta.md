@@ -22,10 +22,10 @@ Porto Alegre, 2026
 
 ## Objeto Computacional
 
-- **Objeto de Estudo:** Implementações do algoritmo Kyber-512 (ML-KEM, padrão NIST) em comparação com o CTRU-Light.
-- **Ambiente de Restrição:** Microcontrolador ATmega4809 (6 KB de SRAM, 48 KB Flash).
-- **Problema:** O padrão PQC opera com anéis polinomiais e hashing pesado (SHA-3/Keccak), exigindo milhares de k-ciclos, sobrecarregando a SRAM e bateria.
-- **Objetivo:** Determinar o limite de aplicabilidade do Kyber-512, quantificando o custo energético e avaliando a margem operacional (CPU/SRAM livre) para as demais tarefas do sistema (sensoriamento, MQTT, RTOS).
+- **Objeto de Estudo:** Kyber-512 (ML-KEM, padrão NIST) vs. CTRU-Light (LWC), com ECDH clássico como linha de base de controle.
+- **Ambiente de Restrição:** Microcontrolador ATmega4809 (6 KB de SRAM, 48 KB de Flash, 20Mhz).
+- **Problema:** O padrão PQC opera com anéis polinomiais e hashing pesado (SHA-3/Keccak), exigindo milhares de k-ciclos e sobrecarregando a SRAM e a bateria.
+- **Objetivo:** Determinar o limite de aplicabilidade do Kyber-512, quantificando o custo energético e avaliando a margem operacional (CPU e SRAM livres) para tarefas concorrentes (Sensoriamento, MQTT, RTOS).
 
 ---
 
@@ -43,15 +43,15 @@ Porto Alegre, 2026
 - **Footprint de Memória (Stack Peak e ROM):**
   - *Registro & Cálculo:* *Stack Watermarking* ($\text{RAMEND} - \text{Endereço Mínimo}$) e `avr-size`.
 - **Margem Operacional Sistêmica (Headroom %):**
-  - *Cálculo:* $\text{CPU}_{\text{livre}} = (1 - T_{\text{exec}}/T_{\text{ciclo}}) \times 100$ e $\text{SRAM}_{\text{livre}} = \text{SRAM}_{\text{total}} - \text{Stack Peak}$.
+  - *Cálculo:* $\text{CPU}_{\text{livre}} = (1 - T_{\text{exec}}/T_{\text{ciclo}}) \times 100$ e $\text{SRAM}_{\text{livre}} = \text{SRAM}_{\text{total}} - (\text{Stack Peak} + \text{SRAM}_{\text{estática}})$.
 
 ---
 
 ## Fatores de Comparação e Variáveis
 
-- **Algoritmos:** Kyber-512 (ML-KEM) vs. CTRU-Light.
+- **Algoritmos:** ECDH vs. CTRU-Light vs. Kyber-512.
 - **Estratégias de Implementação:** Código de referência em C puro vs. Assembly otimizado.
-- **Fase Criptográfica:** Geração de Chaves (KeyGen), Encapsulamento (Encaps) e Desencapsulamento (Decaps).
+- **Fase Criptográfica:** Geração de Chaves (KeyGen), Encapsulamento (Encaps) e Decapsulamento (Decaps).
 
 ---
 
