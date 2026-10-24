@@ -1,0 +1,27 @@
+{
+  "boards": [
+    {
+      "id": "board-mvmofb3k-1",
+      "name": "Quadro",
+      "columns": [
+        {
+          "id": "col-mvmofb3k-2",
+          "title": "To do",
+          "cards": []
+        },
+        {
+          "id": "col-mvmofb3k-3",
+          "title": "Doing",
+          "cards": []
+        },
+        {
+          "id": "col-mvmofb3k-4",
+          "title": "Done",
+          "cards": []
+        }
+      ]
+    }
+  ],
+  "activeBoardId": "board-mvmofb3k-1",
+  "autoDeleteDoneDays": 7
+}
