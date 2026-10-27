@@ -1,19 +1,19 @@
 /*
- * main.c — Harness de medição PQC no ATmega4809 (Arduino Nano Every).
+ * main.c — PQC measurement harness on the ATmega4809 (Arduino Nano Every).
  *
- * Implementa a máquina de estados do roadmap (docs/roadmap.md, 1.3):
- *   - Protocolo serial de disparo (CMD_KEYGEN / CMD_ENCAPS / CMD_DECAPS).
- *   - Janela de medição marcada por GPIO de 1 ciclo (VPORTx.OUT).
- *   - Stack watermarking com padrão 0xAA para medir o pico de pilha.
- *   - Pulsos identificadores (1/2/3) antes da janela para o parser.
- *   - Relatório via UART FORA da janela de medição.
+ * Implements the state machine from the roadmap (docs/roadmap.md, 1.3):
+ *   - Serial trigger protocol (CMD_KEYGEN / CMD_ENCAPS / CMD_DECAPS).
+ *   - Measurement window marked by a 1-cycle GPIO toggle (VPORTx.OUT).
+ *   - Stack watermarking with the 0xAA pattern to measure peak stack usage.
+ *   - Identifier pulses (1/2/3) before the window, for the parser.
+ *   - Telemetry reported over UART OUTSIDE the measurement window.
  *
- * Determinismo: interrupções desativadas (cli) durante a janela medida.
+ * Determinism: interrupts are disabled (cli) during the measured window.
  *
- * Pinos (ajustar ao roteamento físico da bancada):
- *   - GPIO de janela: PORTA bit 0  -> VPORTA.OUT, bit 0
- *   O osciloscópio dispara na borda de subida; o analisador lógico mede a
- *   largura do pulso (latência).
+ * Pins (adjust to the physical bench wiring):
+ *   - Measurement-window GPIO: PORTA bit 0 -> VPORTA.OUT, bit 0
+ *   The oscilloscope triggers on the rising edge; the logic analyzer measures
+ *   the pulse width (latency).
  */
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -21,7 +21,7 @@
 #include <string.h>
 #include "kem.h"
 
-/* ---- Configuração ---------------------------------------- */
+/* ---- Configuration --------------------------------------- */
 #ifndef F_CPU
 #define F_CPU 20000000UL
 #endif
@@ -29,25 +29,26 @@
 #define BAUD 115200
 #endif
 
-#define GPIO_BIT   0            /* PA0 como janela de medição */
-#define WM_PATTERN 0xAA         /* padrão de watermark da pilha */
+#define GPIO_BIT   0            /* PA0 as the measurement window */
+#define WM_PATTERN 0xAA         /* stack watermark pattern */
 
-/* Comandos do protocolo serial (1 byte). */
+/* Serial protocol commands (1 byte). */
 #define CMD_KEYGEN 'K'
 #define CMD_ENCAPS 'E'
 #define CMD_DECAPS 'D'
 
-/* ---- Janela de medição (GPIO de 1 ciclo via VPORT) ------- */
+/* ---- Measurement window (1-cycle GPIO via VPORT) --------- */
 static inline void window_high(void) { VPORTA.OUT |=  (1 << GPIO_BIT); }
 static inline void window_low(void)  { VPORTA.OUT &= ~(1 << GPIO_BIT); }
 
-/* Delay curto sem <util/delay.h> para não depender de F_CPU em macro de header.
- * Grosseiro de propósito: só precisa ser distinguível no analisador lógico. */
+/* Short delay without <util/delay.h> so we don't depend on F_CPU in a header
+ * macro. Deliberately coarse: it only needs to be distinguishable on the
+ * logic analyzer. */
 static void delay_us_approx(void) {
     for (volatile uint16_t i = 0; i < (F_CPU / 1000000UL); i++) { __asm__ __volatile__("nop"); }
 }
 
-/* Pulsos identificadores: n pulsos curtos antes da janela de medição. */
+/* Identifier pulses: n short pulses before the measurement window. */
 static void id_pulses(uint8_t n) {
     for (uint8_t i = 0; i < n; i++) {
         window_high();
@@ -58,28 +59,28 @@ static void id_pulses(uint8_t n) {
 }
 
 /* ---- Stack watermarking ---------------------------------- */
-/* Símbolos do linker: fim do .bss (início da área livre) e topo da RAM. */
+/* Linker symbols: end of .bss (start of the free area) and top of RAM. */
 extern uint8_t __heap_start;
-extern uint8_t __stack;        /* = RAMEND na prática */
+extern uint8_t __stack;        /* = RAMEND in practice */
 
-/* Preenche a região livre entre o heap e a pilha com 0xAA. */
+/* Fill the free region between the heap and the stack with 0xAA. */
 static void stack_paint(void) {
     uint8_t *p = &__heap_start;
     uint8_t *sp = (uint8_t *)SP;
     while (p < sp) { *p++ = WM_PATTERN; }
 }
 
-/* Varre do heap para cima até achar o primeiro byte intocado (!= 0xAA).
- * Pico de pilha = RAMEND - endereço_mínimo_tocado. */
+/* Scan upward from the heap until the first untouched byte (!= 0xAA).
+ * Peak stack = RAMEND - lowest_touched_address. */
 static uint16_t stack_peak(void) {
     uint8_t *p = &__heap_start;
     while (p < (uint8_t *)RAMEND && *p == WM_PATTERN) { p++; }
     return (uint16_t)(RAMEND - (uint16_t)(uintptr_t)p);
 }
 
-/* ---- UART (USART3 na Nano Every / PB0-PB1) --------------- */
+/* ---- UART (USART3 on the Nano Every / PB0-PB1) ----------- */
 static void uart_init(void) {
-    /* Baud = (64 * F_CPU) / (16 * BAUD) para modo assíncrono normal. */
+    /* Baud = (64 * F_CPU) / (16 * BAUD) in normal asynchronous mode. */
     USART3.BAUD = (uint16_t)((64UL * F_CPU) / (16UL * BAUD));
     USART3.CTRLB = USART_TXEN_bm | USART_RXEN_bm;
     PORTB.DIRSET = (1 << 0);   /* TX */
@@ -104,14 +105,14 @@ static void uart_tx_u16(uint16_t v) {
     uart_tx((uint8_t)(v & 0xFF));
 }
 
-/* ---- Buffers (alocação estática: sem malloc no AVR) ------ */
+/* ---- Buffers (static allocation: no malloc on AVR) ------- */
 static uint8_t pk[KEM_PUBLICKEYBYTES];
 static uint8_t sk[KEM_SECRETKEYBYTES];
 static uint8_t ct[KEM_CIPHERTEXTBYTES];
 static uint8_t ss[KEM_BYTES];
 
-/* ---- Rotina de medição de uma operação ------------------- */
-/* Envolve a chamada criptográfica na janela GPIO, com IRQ desativada. */
+/* ---- Per-operation measurement routine ------------------- */
+/* Wraps the crypto call in the GPIO window, with interrupts disabled. */
 #define MEASURE(call) do {         \
         cli();                     \
         window_high();             \
@@ -148,7 +149,7 @@ static void do_decaps(void) {
 }
 
 int main(void) {
-    VPORTA.DIR |= (1 << GPIO_BIT);   /* GPIO de janela como saída */
+    VPORTA.DIR |= (1 << GPIO_BIT);   /* measurement-window GPIO as output */
     window_low();
     uart_init();
 

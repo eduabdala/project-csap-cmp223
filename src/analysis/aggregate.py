@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""aggregate.py — Consolida os JSONs por iteração em uma tabela com estatística.
+"""aggregate.py — Consolidate per-iteration JSONs into a table with statistics.
 
-Agrupa por (algoritmo, clock, otimização, operação) e calcula média e
-intervalo de confiança de 95% (t de Student) para cada métrica.
+Groups by (algorithm, variant, clock, optimization, operation) and computes the
+mean and 95% confidence interval (Student's t) for each metric.
 
-O nome do arquivo carrega os fatores:
-    {alg}-{clock}MHz-{opt}-{op}-{i}.json
+The filename carries the factors:
+    {alg}-{var}-{clock}MHz-{opt}-{op}-{i}.json
 """
 import argparse, json, csv, os, re, math
 from collections import defaultdict
@@ -17,7 +17,7 @@ NAME_RE = re.compile(
 
 
 def ci95(values):
-    """Média e meia-largura do IC 95% (aprox. normal p/ n>=30)."""
+    """Mean and half-width of the 95% CI (normal approx. for n>=30)."""
     n = len(values)
     if n == 0:
         return 0.0, 0.0
@@ -26,7 +26,7 @@ def ci95(values):
         return mean, 0.0
     var = sum((x - mean) ** 2 for x in values) / (n - 1)
     sd = math.sqrt(var)
-    # z=1.96 (n>=30). Para n pequeno, trocar por t de Student (scipy).
+    # z=1.96 (n>=30). For small n, use Student's t instead (scipy).
     return mean, 1.96 * sd / math.sqrt(n)
 
 
@@ -52,7 +52,7 @@ def main():
     with open(args.out, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow([
-            "algoritmo", "variante", "clock_mhz", "otimizacao", "operacao", "n",
+            "algorithm", "variant", "clock_mhz", "optimization", "operation", "n",
             "energy_uj_mean", "energy_uj_ci95",
             "latency_s_mean", "latency_s_ci95",
             "stack_peak_mean", "stack_peak_ci95",

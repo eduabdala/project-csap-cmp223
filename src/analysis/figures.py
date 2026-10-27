@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""figures.py — Gera gráficos finais a partir da tabela agregada.
+"""figures.py — Generate the final plots from the aggregated table.
 
-Lê summary_table.csv e produz um gráfico de trade-off (energia × stack) com
-barras de erro (IC 95%), em PDF vetorial para o artigo LaTeX.
+Reads summary_table.csv and produces a trade-off plot (energy vs. stack) with
+error bars (95% CI), as a vector PDF for the LaTeX paper.
 """
 import argparse, csv
 from collections import defaultdict
@@ -18,11 +18,11 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    # agrupa pontos por algoritmo
+    # group points by algorithm
     pts = defaultdict(lambda: {"x": [], "xe": [], "y": [], "ye": []})
     with open(args.inp) as f:
         for row in csv.DictReader(f):
-            alg = row["algoritmo"]
+            alg = row["algorithm"]
             pts[alg]["x"].append(float(row["energy_uj_mean"]))
             pts[alg]["xe"].append(float(row["energy_uj_ci95"]))
             pts[alg]["y"].append(float(row["stack_peak_mean"]))
@@ -32,10 +32,10 @@ def main():
     for alg, p in pts.items():
         ax.errorbar(p["x"], p["y"], xerr=p["xe"], yerr=p["ye"],
                     fmt="o", capsize=3, label=alg)
-    ax.set_xlabel("Energia por operação (µJ)")
-    ax.set_ylabel("Pico de stack (bytes)")
-    ax.set_title("Trade-off energia × memória")
-    ax.axhline(6144, ls="--", color="#c8102e", label="Limite SRAM (6 KB)")
+    ax.set_xlabel("Energy per operation (uJ)")
+    ax.set_ylabel("Peak stack (bytes)")
+    ax.set_title("Energy vs. memory trade-off")
+    ax.axhline(6144, ls="--", color="#c8102e", label="SRAM limit (6 KB)")
     ax.legend()
     fig.tight_layout()
     fig.savefig(args.out)

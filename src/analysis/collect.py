@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""collect.py — Dispara uma operação no MCU e captura a forma de onda.
+"""collect.py — Trigger one operation on the MCU and capture the waveform.
 
-STUB DE BANCADA: depende do hardware conectado (osciloscópio + analisador
-lógico + placa). As partes marcadas com TODO precisam do driver específico
-do seu osciloscópio (ex.: python-vxi11, pyvisa) e do sigrok-cli.
+BENCH STUB: depends on the connected hardware (oscilloscope + logic analyzer +
+board). The parts marked TODO need your specific oscilloscope driver (e.g.
+python-vxi11, pyvisa) and sigrok-cli.
 
-Fluxo:
-  1. Abre a serial e envia o byte de comando (K/E/D).
-  2. Arma o osciloscópio p/ trigger na borda de subida do GPIO.
-  3. Lê a telemetria (stack peak) de volta pela serial.
-  4. Salva a forma de onda em CSV (t_s, v_shunt_v).
+Flow:
+  1. Open the serial port and send the command byte (K/E/D).
+  2. Arm the oscilloscope to trigger on the GPIO rising edge.
+  3. Read back the telemetry (stack peak) over serial.
+  4. Save the waveform to CSV (t_s, v_shunt_v).
 """
 import argparse, sys
 
@@ -24,27 +24,27 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    # TODO(bancada): armar osciloscópio (pyvisa/vxi11) para trigger GPIO.
-    # TODO(bancada): disparar sigrok-cli p/ largura do pulso (latência).
+    # TODO(bench): arm the oscilloscope (pyvisa/vxi11) for the GPIO trigger.
+    # TODO(bench): fire sigrok-cli for the pulse width (latency).
 
     try:
         import serial  # pyserial
     except ImportError:
-        sys.exit("pyserial não instalado (entre no `nix develop`).")
+        sys.exit("pyserial not installed (enter the `nix develop` shell).")
 
     with serial.Serial(args.port, args.baud, timeout=5) as ser:
         ser.write(CMD[args.op])
-        # TODO(bancada): ler ACK + stack peak (2 bytes big-endian) + artefato.
+        # TODO(bench): read ACK + stack peak (2 bytes big-endian) + artifact.
         _ = ser.read(3)
 
-    # TODO(bancada): baixar a waveform do osciloscópio e gravar como:
+    # TODO(bench): download the waveform from the scope and write it as:
     #   t_s,v_shunt_v
     #   ...
-    # Placeholder para o pipeline não quebrar em dry-run:
+    # Placeholder so the pipeline doesn't break on dry-run:
     with open(args.out, "w") as f:
         f.write("t_s,v_shunt_v\n")
 
-    print(f"[collect] {args.op} -> {args.out} (STUB: sem captura real)")
+    print(f"[collect] {args.op} -> {args.out} (STUB: no real capture)")
 
 
 if __name__ == "__main__":

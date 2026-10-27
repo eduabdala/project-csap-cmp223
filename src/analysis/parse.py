@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""parse.py — Processa um CSV bruto de uma iteração e extrai as métricas.
+"""parse.py — Process one raw CSV from a single iteration and extract metrics.
 
-Entrada (CSV do osciloscópio/analisador lógico), colunas esperadas:
-    t_s, v_shunt_v        # tempo (s) e tensão no shunt (V) dentro da janela
-Metadados (cabeçalho ou arquivo irmão): latência da janela e pico de stack.
+Input (oscilloscope/logic-analyzer CSV), expected columns:
+    t_s, v_shunt_v        # time (s) and shunt voltage (V) within the window
+Metadata (header or sibling file): window latency and peak stack.
 
-Saída (JSON) com: energia (µJ), latência (s), pico de stack (bytes).
+Output (JSON) with: energy (uJ), latency (s), peak stack (bytes).
 
-A integração de energia é pura (sem hardware), então esta etapa é testável
-offline. E = ∫ V·i dt, com i = v_shunt / R_shunt.
+The energy integration is pure (no hardware), so this stage is testable
+offline. E = INT V*i dt, with i = v_shunt / R_shunt.
 """
 import argparse, json, csv
 
 
 def integrate_energy(t, v_shunt, r_shunt, v_supply=5.0):
-    """Energia (Joules) por regra do trapézio.
+    """Energy (Joules) via the trapezoidal rule.
 
-    Potência instantânea no MCU: P(t) = V_supply * i(t), i(t)=v_shunt/R.
-    (Aproximação: assume V_supply ~ constante; refinar se medir V_mcu.)
+    Instantaneous power at the MCU: P(t) = V_supply * i(t), i(t)=v_shunt/R.
+    (Approximation: assumes V_supply ~ constant; refine if V_mcu is measured.)
     """
     if len(t) < 2:
         return 0.0
@@ -27,7 +27,7 @@ def integrate_energy(t, v_shunt, r_shunt, v_supply=5.0):
         i0 = v_shunt[k - 1] / r_shunt
         i1 = v_shunt[k] / r_shunt
         p0, p1 = v_supply * i0, v_supply * i1
-        energy += 0.5 * (p0 + p1) * dt     # trapézio
+        energy += 0.5 * (p0 + p1) * dt     # trapezoid
     return energy
 
 
@@ -47,7 +47,7 @@ def main():
     ap.add_argument("--shunt", type=float, required=True, help="R_shunt (ohms)")
     ap.add_argument("--vsupply", type=float, default=5.0)
     ap.add_argument("--stack-peak", type=int, default=-1,
-                    help="pico de stack em bytes (vindo da telemetria serial)")
+                    help="peak stack in bytes (from serial telemetry)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 

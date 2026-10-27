@@ -1,20 +1,20 @@
 /*
- * kem_kyber512.c — Adaptador do Kyber-512 para a interface kem.h.
+ * kem_kyber512.c — Kyber-512 adapter for the kem.h interface.
  *
- * Fonte vendorizada em pqc/kyber512/<ref|asm>/ (ver scripts/vendor-pqc.sh).
- * Por padrão usamos o artefato CHES 2026 (whYBeKim/CTRU-Light-and-PQC-on-AVR),
- * cuja API segue a convenção:
+ * Source vendored under pqc/kyber512/<ref|asm>/ (see scripts/vendor-pqc.sh).
+ * By default we use the CHES 2026 artifact (whYBeKim/CTRU-Light-and-PQC-on-AVR),
+ * whose API follows the convention:
  *   crypto_kem_keypair(pk, sk)
  *   crypto_kem_enc(ct, ss, pk)
  *   crypto_kem_dec(ss, ct, sk)
  *
- * Se trocar a fonte por PQClean (prefixo PQCLEAN_MLKEM512_CLEAN_*), redefina
- * as macros KYBER_* abaixo via -D no Makefile, ou ajuste aqui.
+ * If you switch the source to PQClean (prefix PQCLEAN_MLKEM512_CLEAN_*),
+ * redefine the KYBER_* macros below via -D in the Makefile, or adjust here.
  *
- * Tamanhos (ML-KEM-512 / Kyber-512): PK 800, SK 1632, CT 768, SS 32.
+ * Sizes (ML-KEM-512 / Kyber-512): PK 800, SK 1632, CT 768, SS 32.
  */
 #include "kem.h"
-#include "api.h"   /* header do pacote vendorizado em pqc/kyber512/ */
+#include "api.h"   /* header from the vendored package under pqc/kyber512/ */
 
 #ifndef KYBER_KEYPAIR
 #define KYBER_KEYPAIR crypto_kem_keypair

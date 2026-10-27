@@ -1,5 +1,5 @@
 {
-  description = "CMP223 — toolchain AVR (ATmega4809) + análise PQC reprodutível";
+  description = "CMP223 — AVR toolchain (ATmega4809) + reproducible PQC analysis";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
@@ -11,22 +11,22 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        # Cross-toolchain AVR. O conjunto pkgsCross.avr já traz o gcc com
-        # avr-libc para o target; não dá para compilar avr-libc no host.
+        # AVR cross-toolchain. The pkgsCross.avr set already ships gcc with
+        # avr-libc for the target; avr-libc cannot be built on the host.
         avr = with pkgs.pkgsCross.avr.buildPackages; [
           gcc        # avr-gcc
           binutils   # avr-ld, avr-objcopy, avr-size, ...
         ];
 
-        # Ferramentas de bancada e gravação.
+        # Bench and programming tools.
         bench = with pkgs; [
-          avrdude      # gravação via UPDI
-          sigrok-cli   # analisador lógico
-          pulseview    # visualização (opcional, GUI)
-          picocom       # terminal serial
+          avrdude      # programming via UPDI
+          sigrok-cli   # logic analyzer
+          pulseview    # visualization (optional, GUI)
+          picocom      # serial terminal
         ];
 
-        # Stack de análise (Snakemake + Python científico).
+        # Analysis stack (Snakemake + scientific Python).
         analysis = with pkgs; [
           snakemake
           (python3.withPackages (ps: with ps; [
@@ -40,17 +40,17 @@
           packages = avr ++ bench ++ analysis;
 
           shellHook = ''
-            echo "CMP223 devShell — AVR + análise"
+            echo "CMP223 devShell — AVR + analysis"
             echo "  $(avr-gcc --version | head -1)"
             echo "  build:  make -C src/firmware"
-            echo "  vendor: src/scripts/vendor-kyber.sh"
+            echo "  vendor: src/scripts/vendor-pqc.sh"
           '';
         };
 
-        # Build do firmware como pacote derivável/reprodutível.
-        # Requer que pqc/kyber512/ já esteja vendorizado (vendor-kyber.sh).
+        # Firmware build as a derivable/reproducible package.
+        # Requires pqc/<alg>/<variant>/ to be vendored first (vendor-pqc.sh).
         packages.firmware = pkgs.stdenv.mkDerivation {
-          pname = "cmp223-firmware-kyber512";
+          pname = "cmp223-firmware";
           version = "0.1.0";
           src = ./src/firmware;
           nativeBuildInputs = with pkgs.pkgsCross.avr.buildPackages; [ gcc binutils ];

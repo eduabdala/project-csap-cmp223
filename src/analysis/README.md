@@ -1,48 +1,49 @@
-# analysis — Pipeline reprodutível (Snakemake)
+# analysis — Reproducible pipeline (Snakemake)
 
-Automação da coleta e análise, conforme o flowchart de metodologia
-(`.kiro/specs/cmp223/draft.md`). Transforma a matriz de fatores em dados
-tratados com estatística.
+Automates collection and analysis, following the methodology flowchart
+(`.kiro/specs/cmp223/draft.md`). Turns the factor matrix into statistically
+processed data.
 
-## Fluxo
+## Flow
 
 ```
-config.yaml  →  build (avr-gcc)  →  flash (avrdude/UPDI)  →  collect (osc + LA)
-             →  parse (E=∫V·i dt) →  aggregate (média, IC 95%) →  figures
+config.yaml  ->  build (avr-gcc)  ->  flash (avrdude/UPDI)  ->  collect (scope + LA)
+             ->  parse (E=INT V*i dt) ->  aggregate (mean, 95% CI) ->  figures
 ```
 
-Fatores: **algoritmo × variante × clock × otimização × operação**. São 6
-binários (3 algoritmos × {ref, asm}); cada um é buildado, gravado e medido
-separadamente, para todas as combinações de clock e otimização.
+Factors: **algorithm x variant x clock x optimization x operation**. There are
+6 binaries (3 algorithms x {ref, asm}); each is built, flashed and measured
+separately, for every clock and optimization combination.
 
-## Arquivos
+## Files
 
-| Arquivo | Papel | Estado |
-|---------|-------|--------|
-| `config.yaml`  | Matriz de fatores e parâmetros do DoE | pronto |
-| `Snakefile`    | Orquestração das regras | esqueleto (regras de bancada = TODO) |
-| `parse.py`     | Integração numérica da energia por iteração | **funcional / testado** |
-| `aggregate.py` | Média + IC 95% por combinação de fatores | **funcional / testado** |
-| `collect.py`   | Disparo serial + captura de forma de onda | stub (depende da bancada) |
-| `figures.py`   | Gráfico de trade-off com barras de erro | funcional (precisa de dados) |
+| File | Role | Status |
+|------|------|--------|
+| `config.yaml`  | Factor matrix and DoE parameters | ready |
+| `Snakefile`    | Rule orchestration | skeleton (bench rules = TODO) |
+| `parse.py`     | Per-iteration energy integration | **working / tested** |
+| `aggregate.py` | Mean + 95% CI per factor combination | **working / tested** |
+| `collect.py`   | Serial trigger + waveform capture | stub (depends on the bench) |
+| `figures.py`   | Trade-off plot with error bars | working (needs data) |
 
-## Uso
+## Usage
 
 ```bash
-nix develop                 # traz snakemake + python científico
+nix develop                 # brings snakemake + scientific python
 cd src/analysis
-snakemake -n -j1            # dry-run: inspeciona o DAG
-snakemake -j1 all           # pipeline completo (requer bancada p/ flash/collect)
+snakemake -n -j1            # dry-run: inspect the DAG
+snakemake -j1 all           # full pipeline (needs the bench for flash/collect)
 ```
 
-## O que ainda falta (bancada)
+## What's still missing (bench)
 
-- `collect.py`: integrar o driver do osciloscópio (pyvisa/vxi11) e o
-  `sigrok-cli` para o analisador lógico. Hoje grava um CSV vazio (placeholder).
-- Calibração: criar `calib.yaml` com o valor **real** do shunt (medido), em vez
-  do nominal de 1 Ω em `config.yaml`.
-- Leitura da telemetria serial (stack peak) e injeção em `parse.py` via
+- `collect.py`: integrate the oscilloscope driver (pyvisa/vxi11) and
+  `sigrok-cli` for the logic analyzer. It currently writes an empty CSV
+  (placeholder).
+- Calibration: create `calib.yaml` with the **measured** shunt value, instead
+  of the nominal 1 ohm in `config.yaml`.
+- Serial telemetry read (stack peak) and injection into `parse.py` via
   `--stack-peak`.
 
-As etapas puras (`parse`, `aggregate`, `figures`) já funcionam offline — dá para
-validar a estatística com CSVs sintéticos antes de ter o hardware.
+The pure stages (`parse`, `aggregate`, `figures`) already work offline — you
+can validate the statistics with synthetic CSVs before having the hardware.

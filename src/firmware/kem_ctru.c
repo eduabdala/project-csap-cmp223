@@ -1,20 +1,20 @@
 /*
- * kem_ctru.c — Adaptador do CTRU-Light para a interface kem.h.
+ * kem_ctru.c — CTRU-Light adapter for the kem.h interface.
  *
- * Fonte: whYBeKim/CTRU-Light-and-PQC-on-AVR (artefato CHES 2026, MIT).
- * Vendorizado em pqc/ctru-light/ (ver scripts/vendor-pqc.sh).
+ * Source: whYBeKim/CTRU-Light-and-PQC-on-AVR (CHES 2026 artifact, MIT).
+ * Vendored under pqc/ctru-light/ (see scripts/vendor-pqc.sh).
  *
- * A API do artefato segue a convenção:
+ * The artifact's API follows the convention:
  *   crypto_kem_keypair(pk, sk)
  *   crypto_kem_enc(ct, ss, pk)
  *   crypto_kem_dec(ss, ct, sk)
- * (confirmar nomes/prefixo exatos no api.h vendorizado e ajustar as macros.)
+ * (confirm the exact names/prefix in the vendored api.h and adjust the macros.)
  *
- * Tamanhos CTRU-Light: pk = ct = 1206 bytes; ss = 32 (ver paper, MDPI 13-21-3388).
- * Ajuste os KEM_* no build do CTRU (ver Makefile: CPPFLAGS por algoritmo).
+ * CTRU-Light sizes: pk = ct = 1206 bytes; ss = 32 (see paper, MDPI 13-21-3388).
+ * Set the KEM_* sizes in the CTRU build (see Makefile: per-algorithm CPPFLAGS).
  */
 #include "kem.h"
-#include "api.h"   /* header do pacote vendorizado em pqc/ctru-light/ */
+#include "api.h"   /* header from the vendored package under pqc/ctru-light/ */
 
 #ifndef CTRU_KEYPAIR
 #define CTRU_KEYPAIR crypto_kem_keypair

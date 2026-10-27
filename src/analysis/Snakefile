@@ -1,45 +1,45 @@
 # ============================================================
-# Snakefile — Pipeline reprodutível de coleta e análise (CMP223).
+# Snakefile — Reproducible collection and analysis pipeline (CMP223).
 #
-# Fluxo (ver flowchart do draft):
-#   build (avr-gcc) -> flash (avrdude) -> coleta (osc + LA + stack)
-#   -> parse/integração (E = ∫V·i dt) -> estatística (IC 95%) -> tabela/figuras
+# Flow (see the draft flowchart):
+#   build (avr-gcc) -> flash (avrdude) -> collect (scope + LA + stack)
+#   -> parse/integration (E = INT V*i dt) -> statistics (95% CI) -> table/figures
 #
-# Uso (dentro do `nix develop`):
+# Usage (inside `nix develop`):
 #   snakemake -j1 --configfile config.yaml all
-#   snakemake -n            # dry-run (ver o DAG de jobs)
+#   snakemake -n            # dry-run (inspect the job DAG)
 #
-# ESTADO: esqueleto. As regras de HARDWARE (flash/coleta) têm placeholders
-# marcados com TODO porque dependem da bancada física conectada.
+# STATUS: skeleton. The HARDWARE rules (flash/collect) have placeholders marked
+# with TODO because they depend on the physical bench being connected.
 # ============================================================
 
 import itertools, random
 
 configfile: "config.yaml"
 
-ALGS   = config["algoritmos"]
-VARS   = config["variantes"]
+ALGS   = config["algorithms"]
+VARS   = config["variants"]
 CLOCKS = [str(c) for c in config["clock_mhz"]]
-OPTS   = config["otimizacao"]
-OPS    = config["operacoes"]
-N      = config["iteracoes"]
+OPTS   = config["optimization"]
+OPS    = config["operations"]
+N      = config["iterations"]
 RAW    = config["raw_dir"]
 PROC   = config["proc_dir"]
 
-# Rótulo seguro p/ nome de arquivo (ex.: "-Os" -> "Os").
+# Filename-safe label (e.g. "-Os" -> "Os").
 def opt_tag(o): return o.lstrip("-")
 
-# Todas as combinações de fatores (produto cartesiano).
-# algoritmo × variante × clock × otimização
+# All factor combinations (cartesian product).
+# algorithm x variant x clock x optimization
 COMBOS = list(itertools.product(ALGS, VARS, CLOCKS, OPTS))
 
-# ---- Alvo final --------------------------------------------
+# ---- Final target ------------------------------------------
 rule all:
     input:
         f"{PROC}/summary_table.csv",
-        f"{PROC}/figuras/trade_off.pdf"
+        f"{PROC}/figures/trade_off.pdf"
 
-# ---- 1. Build parametrizado (avr-gcc) ----------------------
+# ---- 1. Parameterized build (avr-gcc) ----------------------
 rule build:
     output:
         hex=f"{RAW}/bin/firmware-{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.hex",
@@ -59,30 +59,30 @@ rule build:
         """
 
 # ---- 2. Flash (avrdude via UPDI) ---------------------------
-# TODO(bancada): roda só com a placa conectada. Marcado como checkpoint manual.
+# TODO(bench): runs only with the board connected. Treated as a manual checkpoint.
 rule flash:
     input:
         hex=f"{RAW}/bin/firmware-{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.hex"
     output:
         touch(f"{RAW}/flashed/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.ok")
     params:
-        mcu="atmega4809", port=config["porta_serial"]
+        mcu="atmega4809", port=config["serial_port"]
     shell:
         r"""
         avrdude -c jtag2updi -p {params.mcu} -P {params.port} \
                 -U flash:w:{input.hex}:i
         """
 
-# ---- 3. Coleta de uma iteração -----------------------------
-# TODO(bancada): dispara a operação via serial e captura osciloscópio + LA +
-# dump de stack. Depende do driver do osciloscópio e do sigrok-cli.
+# ---- 3. Collect one iteration ------------------------------
+# TODO(bench): trigger the operation over serial and capture scope + LA +
+# stack dump. Depends on the oscilloscope driver and sigrok-cli.
 rule collect:
     input:
         flashed=f"{RAW}/flashed/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.ok"
     output:
         csv=f"{RAW}/runs/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}-{{op}}-{{i}}.csv"
     params:
-        port=config["porta_serial"], baud=config["baud"]
+        port=config["serial_port"], baud=config["baud"]
     shell:
         r"""
         python collect.py \
@@ -90,7 +90,7 @@ rule collect:
             --out {output.csv}
         """
 
-# ---- 4. Parse + integração numérica por iteração -----------
+# ---- 4. Parse + numerical integration per iteration --------
 rule parse:
     input:
         csv=f"{RAW}/runs/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}-{{op}}-{{i}}.csv"
@@ -103,7 +103,7 @@ rule parse:
         python parse.py --in {input.csv} --shunt {params.shunt} --out {output.row}
         """
 
-# ---- 5. Agregação estatística (média, IC 95%, outliers) ----
+# ---- 5. Statistical aggregation (mean, 95% CI, outliers) ---
 def all_rows(wildcards):
     rng = random.Random(config["seed"])
     rows = []
@@ -113,7 +113,7 @@ def all_rows(wildcards):
                 rows.append(
                     f"{PROC}/rows/{alg}-{var}-{clock}MHz-{opt_tag(opt)}-{op}-{i}.json"
                 )
-    rng.shuffle(rows)   # ordem de execução randomizada (DoE)
+    rng.shuffle(rows)   # randomized execution order (DoE)
     return rows
 
 rule aggregate:
@@ -124,11 +124,11 @@ rule aggregate:
     shell:
         "python aggregate.py --in {input} --out {output.table}"
 
-# ---- 6. Figuras finais -------------------------------------
+# ---- 6. Final figures --------------------------------------
 rule figures:
     input:
         table=f"{PROC}/summary_table.csv"
     output:
-        fig=f"{PROC}/figuras/trade_off.pdf"
+        fig=f"{PROC}/figures/trade_off.pdf"
     shell:
         "python figures.py --in {input.table} --out {output.fig}"
