@@ -13,7 +13,8 @@
 # with TODO because they depend on the physical bench being connected.
 # ============================================================
 
-import itertools, random
+import random
+from design import load_levels, build_design, FACTORS
 
 configfile: "config.yaml"
 
@@ -29,15 +30,29 @@ PROC   = config["proc_dir"]
 # Filename-safe label (e.g. "-Os" -> "Os").
 def opt_tag(o): return o.lstrip("-")
 
-# All factor combinations (cartesian product).
-# algorithm x variant x clock x optimization
-COMBOS = list(itertools.product(ALGS, VARS, CLOCKS, OPTS))
+# Factor matrix generated with pyDOE3 (see design.py). This replaces the manual
+# itertools.product: the design is a named, citable method and can be switched
+# to a fractional design via config["design"] if the bench time is too long.
+_levels = load_levels(config)
+_design = build_design(_levels, kind=config.get("design", "full"),
+                       generator=config.get("fraction_generator"))
+# Rows as (alg, var, clock, opt) tuples, matching the previous COMBOS shape.
+COMBOS = [tuple(row[f] for f in FACTORS) for row in _design]
 
 # ---- Final target ------------------------------------------
 rule all:
     input:
         f"{PROC}/summary_table.csv",
         f"{PROC}/figures/trade_off.pdf"
+
+# ---- 0. Experiment design (pyDOE3) -------------------------
+# Writes the factor matrix as a citable artifact. Not a build dependency of the
+# runs (COMBOS is computed in-process above), but kept so the plan is on disk.
+rule design:
+    output:
+        csv=f"{PROC}/design.csv"
+    shell:
+        "python design.py --config config.yaml --out {output.csv}"
 
 # ---- 1. Parameterized build (avr-gcc) ----------------------
 rule build:

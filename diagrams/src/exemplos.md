@@ -86,3 +86,57 @@ xychart
     bar [2650, 3100, 3480]
     bar [1180, 1420, 1560]
 ```
+
+---
+
+<!-- diagrama: fluxo-execucao -->
+
+```mermaid
+flowchart TB
+    subgraph SETUP [" Setup (uma vez) "]
+        direction TB
+        A["nix develop<br/>(toolchain + análise)"]
+        B["vendor-pqc.sh all<br/>(Kyber / CTRU-Light / ECDH)"]
+        A --> B
+    end
+
+    subgraph BUILD [" Build (por combinação) "]
+        direction TB
+        C["make ALG x VARIANT<br/>OPT x F_CPU"]
+        D["make size<br/>(Flash / SRAM)"]
+        C --> D
+    end
+
+    subgraph BENCH [" Bancada (hardware) "]
+        direction TB
+        E["make flash<br/>(avrdude / UPDI)"]
+        F["collect.py<br/>(osciloscópio + LA)"]
+        E --> F
+    end
+
+    subgraph ANALISE [" Análise (reprodutível) "]
+        direction TB
+        G["design.py<br/>(pyDOE3 -> design.csv)"]
+        H["parse.py<br/>(E = integral V·i dt)"]
+        I["aggregate.py<br/>(média, IC 95%)"]
+        J["figures.py<br/>(trade-off)"]
+        G --> H --> I --> J
+    end
+
+    SETUP --> BUILD
+    BUILD --> BENCH
+    BENCH --> ANALISE
+    G -.->|"matriz de fatores"| C
+
+    %% Estado: destaque = pronto, alerta = falta implementar, neutro = depende de HW
+    A:::destaque
+    B:::neutro
+    C:::destaque
+    D:::destaque
+    E:::neutro
+    F:::alerta
+    G:::destaque
+    H:::destaque
+    I:::destaque
+    J:::destaque
+```

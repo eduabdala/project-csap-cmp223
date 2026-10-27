@@ -17,7 +17,7 @@ sistema.
 | `artigo/`           | Artigo em LaTeX (`artigo/main.tex`) |
 | `slides/`           | Apresentações em [Marp](https://marp.app/) (proposta, parcial, final) |
 | `diagrams/`         | Diagramas Mermaid com identidade INF-UFRGS (fonte e build) |
-| `docs/`             | Documentação de planejamento (`plan.md`, `draft.md`) |
+| `docs/`             | Documentação: planejamento (`plan.md`), roadmap, guia de execução (`running-guide.md`), referências e decisões |
 | `.github/workflows/`| CI: build dos slides (PDF) e do artigo (LaTeX) |
 
 ## Como gerar os entregáveis

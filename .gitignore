@@ -18,3 +18,12 @@ diagrams/out/
 *.bbl
 *.blg
 .kiro
+
+# Firmware build + analysis artifacts
+src/firmware/build/
+src/firmware/pqc/
+src/analysis/data/
+__pycache__/
+*.pyc
+result
+.direnv/

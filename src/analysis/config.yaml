@@ -29,6 +29,8 @@ operations:
   - decaps
 
 # Design of experiments
+design: full        # "full" (pyDOE3 fullfact) or "fracfact" (needs generator)
+# fraction_generator: "a b c abc"   # only for design: fracfact (2-level only)
 iterations: 30      # N per combination (factor x operation)
 seed: 42            # seed for randomizing the execution order
 

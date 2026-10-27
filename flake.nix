@@ -27,11 +27,28 @@
         ];
 
         # Analysis stack (Snakemake + scientific Python).
+        #
+        # pyDOE3 is not (yet) in nixpkgs (see NixOS/nixpkgs#309784), so we build
+        # it inline from PyPI, pinned by hash for reproducibility.
+        pyDOE3 = pkgs.python3Packages.buildPythonPackage rec {
+          pname = "pyDOE3";
+          version = "1.0.3";
+          pyproject = true;
+          src = pkgs.fetchPypi {
+            inherit pname version;
+            # Update with: nix-prefetch-url https://.../pyDOE3-<ver>.tar.gz
+            hash = "sha256-0000000000000000000000000000000000000000000=";
+          };
+          nativeBuildInputs = [ pkgs.python3Packages.setuptools ];
+          propagatedBuildInputs = with pkgs.python3Packages; [ numpy scipy ];
+          doCheck = false;
+        };
+
         analysis = with pkgs; [
           snakemake
           (python3.withPackages (ps: with ps; [
             numpy pandas scipy matplotlib pyserial
-          ]))
+          ] ++ [ pyDOE3 ]))
         ];
       in
       {
