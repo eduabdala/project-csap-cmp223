@@ -1,4 +1,4 @@
-marp-ppt/*.pdf
+slides/*.pdf
 node_modules/
 dist/
 
@@ -17,3 +17,4 @@ diagrams/out/
 *.synctex.gz
 *.bbl
 *.blg
+.kiro

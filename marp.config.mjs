@@ -3,7 +3,7 @@
 export default {
   allowLocalFiles: true,
   html: true,
-  themeSet: ['./marp-ppt'],
+  themeSet: ['./slides'],
   options: {
     looseYAML: true,
   },

@@ -1,0 +1,43 @@
+# ============================================================
+# config.yaml — Matriz de fatores do experimento (DoE).
+# Consumido pelo Snakefile. Alterar aqui = reconfigurar o experimento.
+# ============================================================
+
+# Fatores (variáveis independentes)
+algoritmos:
+  - kyber512
+  - ctru-light
+  - ecdh          # baseline clássico
+
+variantes:         # implementação: C puro de referência vs. assembly AVR
+  - ref
+  - asm
+# => 3 algoritmos × 2 variantes = 6 binários distintos (build/flash/medir cada um)
+
+clock_mhz:
+  - 20
+  - 10
+  - 5
+
+otimizacao:
+  - "-Os"
+  - "-O3"
+
+operacoes:
+  - keygen
+  - encaps
+  - decaps
+
+# Planejamento experimental
+iteracoes: 30       # N por combinação (fator × operação)
+seed: 42            # semente da randomização da ordem de execução
+
+# Bancada
+shunt_ohms: 1.0     # valor NOMINAL; o real calibrado entra em calib.yaml
+porta_serial: "/dev/ttyACM0"
+baud: 115200
+
+# Caminhos
+firmware_dir: "../firmware"
+raw_dir: "data/raw"
+proc_dir: "data/processed"

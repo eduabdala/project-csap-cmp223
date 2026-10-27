@@ -1,7 +1,7 @@
 # Diagramas com identidade INF-UFRGS
 
 Mesma pegada do Marp: você escreve markdown, o build gera a imagem já com a
-paleta do tema (`marp-ppt/inf-ufrgs.css`).
+paleta do tema (`slides/inf-ufrgs.css`).
 
 ## Como usar
 

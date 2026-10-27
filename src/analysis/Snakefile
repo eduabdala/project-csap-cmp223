@@ -1,0 +1,134 @@
+# ============================================================
+# Snakefile — Pipeline reprodutível de coleta e análise (CMP223).
+#
+# Fluxo (ver flowchart do draft):
+#   build (avr-gcc) -> flash (avrdude) -> coleta (osc + LA + stack)
+#   -> parse/integração (E = ∫V·i dt) -> estatística (IC 95%) -> tabela/figuras
+#
+# Uso (dentro do `nix develop`):
+#   snakemake -j1 --configfile config.yaml all
+#   snakemake -n            # dry-run (ver o DAG de jobs)
+#
+# ESTADO: esqueleto. As regras de HARDWARE (flash/coleta) têm placeholders
+# marcados com TODO porque dependem da bancada física conectada.
+# ============================================================
+
+import itertools, random
+
+configfile: "config.yaml"
+
+ALGS   = config["algoritmos"]
+VARS   = config["variantes"]
+CLOCKS = [str(c) for c in config["clock_mhz"]]
+OPTS   = config["otimizacao"]
+OPS    = config["operacoes"]
+N      = config["iteracoes"]
+RAW    = config["raw_dir"]
+PROC   = config["proc_dir"]
+
+# Rótulo seguro p/ nome de arquivo (ex.: "-Os" -> "Os").
+def opt_tag(o): return o.lstrip("-")
+
+# Todas as combinações de fatores (produto cartesiano).
+# algoritmo × variante × clock × otimização
+COMBOS = list(itertools.product(ALGS, VARS, CLOCKS, OPTS))
+
+# ---- Alvo final --------------------------------------------
+rule all:
+    input:
+        f"{PROC}/summary_table.csv",
+        f"{PROC}/figuras/trade_off.pdf"
+
+# ---- 1. Build parametrizado (avr-gcc) ----------------------
+rule build:
+    output:
+        hex=f"{RAW}/bin/firmware-{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.hex",
+        size=f"{RAW}/bin/size-{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.txt"
+    params:
+        fcpu=lambda w: f"{int(w.clock)*1000000}UL",
+        fw=config["firmware_dir"]
+    shell:
+        r"""
+        make -C {params.fw} clean
+        make -C {params.fw} ALG={wildcards.alg} VARIANT={wildcards.var} \
+             OPT=-{wildcards.opt} F_CPU={params.fcpu}
+        mkdir -p $(dirname {output.hex})
+        cp {params.fw}/build/firmware-{wildcards.alg}-{wildcards.var}.hex {output.hex}
+        make -C {params.fw} ALG={wildcards.alg} VARIANT={wildcards.var} \
+             OPT=-{wildcards.opt} F_CPU={params.fcpu} size > {output.size}
+        """
+
+# ---- 2. Flash (avrdude via UPDI) ---------------------------
+# TODO(bancada): roda só com a placa conectada. Marcado como checkpoint manual.
+rule flash:
+    input:
+        hex=f"{RAW}/bin/firmware-{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.hex"
+    output:
+        touch(f"{RAW}/flashed/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.ok")
+    params:
+        mcu="atmega4809", port=config["porta_serial"]
+    shell:
+        r"""
+        avrdude -c jtag2updi -p {params.mcu} -P {params.port} \
+                -U flash:w:{input.hex}:i
+        """
+
+# ---- 3. Coleta de uma iteração -----------------------------
+# TODO(bancada): dispara a operação via serial e captura osciloscópio + LA +
+# dump de stack. Depende do driver do osciloscópio e do sigrok-cli.
+rule collect:
+    input:
+        flashed=f"{RAW}/flashed/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}.ok"
+    output:
+        csv=f"{RAW}/runs/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}-{{op}}-{{i}}.csv"
+    params:
+        port=config["porta_serial"], baud=config["baud"]
+    shell:
+        r"""
+        python collect.py \
+            --op {wildcards.op} --port {params.port} --baud {params.baud} \
+            --out {output.csv}
+        """
+
+# ---- 4. Parse + integração numérica por iteração -----------
+rule parse:
+    input:
+        csv=f"{RAW}/runs/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}-{{op}}-{{i}}.csv"
+    output:
+        row=f"{PROC}/rows/{{alg}}-{{var}}-{{clock}}MHz-{{opt}}-{{op}}-{{i}}.json"
+    params:
+        shunt=config["shunt_ohms"]
+    shell:
+        r"""
+        python parse.py --in {input.csv} --shunt {params.shunt} --out {output.row}
+        """
+
+# ---- 5. Agregação estatística (média, IC 95%, outliers) ----
+def all_rows(wildcards):
+    rng = random.Random(config["seed"])
+    rows = []
+    for alg, var, clock, opt in COMBOS:
+        for op in OPS:
+            for i in range(N):
+                rows.append(
+                    f"{PROC}/rows/{alg}-{var}-{clock}MHz-{opt_tag(opt)}-{op}-{i}.json"
+                )
+    rng.shuffle(rows)   # ordem de execução randomizada (DoE)
+    return rows
+
+rule aggregate:
+    input:
+        all_rows
+    output:
+        table=f"{PROC}/summary_table.csv"
+    shell:
+        "python aggregate.py --in {input} --out {output.table}"
+
+# ---- 6. Figuras finais -------------------------------------
+rule figures:
+    input:
+        table=f"{PROC}/summary_table.csv"
+    output:
+        fig=f"{PROC}/figuras/trade_off.pdf"
+    shell:
+        "python figures.py --in {input.table} --out {output.fig}"

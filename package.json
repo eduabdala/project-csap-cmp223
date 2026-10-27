@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "description": "Slides e artigo do trabalho de CMP223 (INF-UFRGS)",
   "scripts": {
-    "pdf": "marp --config marp.config.mjs --input-dir marp-ppt --output dist/slides --pdf",
-    "pptx": "marp --config marp.config.mjs --input-dir marp-ppt --output dist/slides --pptx",
-    "html": "marp --config marp.config.mjs --input-dir marp-ppt --output dist/slides --html",
-    "watch": "marp --config marp.config.mjs --input-dir marp-ppt --output dist/slides --pdf --watch",
+    "pdf": "marp --config marp.config.mjs --input-dir slides --output dist/slides --pdf",
+    "pptx": "marp --config marp.config.mjs --input-dir slides --output dist/slides --pptx",
+    "html": "marp --config marp.config.mjs --input-dir slides --output dist/slides --html",
+    "watch": "marp --config marp.config.mjs --input-dir slides --output dist/slides --pdf --watch",
     "diagrams": "node diagrams/build.mjs -f svg",
     "diagrams:png": "node diagrams/build.mjs -f png",
     "diagrams:all": "node diagrams/build.mjs -f svg,png -v claro,escuro"
