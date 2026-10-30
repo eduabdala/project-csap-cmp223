@@ -40,6 +40,6 @@ serial_port: "/dev/ttyACM0"
 baud: 115200
 
 # Paths
-firmware_dir: "../firmware"
+firmware_dir: "../firmware/atmega4809"   # or ../firmware/rp2040 (see its Makefile)
 raw_dir: "data/raw"
 proc_dir: "data/processed"

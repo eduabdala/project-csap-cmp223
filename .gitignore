@@ -20,9 +20,9 @@ diagrams/out/
 .kiro
 
 # Firmware build + analysis artifacts
-src/firmware/build/
+src/firmware/*/build/
 src/firmware/pqc/
-src/firmware/.dfp/
+src/firmware/atmega4809/.dfp/
 src/analysis/data/
 __pycache__/
 *.pyc

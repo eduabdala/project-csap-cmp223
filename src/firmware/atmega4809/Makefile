@@ -59,8 +59,10 @@ else ifeq ($(ALG),ecdh)
               $(if $(filter asm,$(VARIANT)),-DuECC_PLATFORM=uECC_avr -DuECC_OPTIMIZATION_LEVEL=3,-DuECC_PLATFORM=uECC_arch_other)
 endif
 
-# Vendored source directory: pqc/<ALG>/<VARIANT>/
-PQCDIR   := pqc/$(ALG)/$(VARIANT)
+# Vendored source directory (shared between targets): ../pqc/<ALG>/<VARIANT>/
+# Shared KEM interface/adapters live in ../common.
+COMMON   := ../common
+PQCDIR   := ../pqc/$(ALG)/$(VARIANT)
 
 # In the asm variant, also include the .S files (AVR assembly).
 ASMSRC   := $(if $(filter asm,$(VARIANT)),$(wildcard $(PQCDIR)/*.S $(PQCDIR)/*/*.S),)
@@ -80,10 +82,15 @@ LDFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARG
 
 # main.c + algorithm adapter + vendored C sources (+ .S in the asm variant).
 CSRC     := main.c $(ADAPTER) $(wildcard $(PQCDIR)/*.c $(PQCDIR)/*/*.c)
-INCLUDES := -I. -I$(PQCDIR) $(addprefix -I,$(wildcard $(PQCDIR)/*/))
+INCLUDES := -I. -I$(COMMON) -I$(PQCDIR) $(addprefix -I,$(wildcard $(PQCDIR)/*/))
 
-OBJ      := $(patsubst %.c,$(BUILD)/%.o,$(CSRC)) \
-            $(patsubst %.S,$(BUILD)/%.o,$(ASMSRC))
+# Objects are flattened into $(BUILD)/ (sources live in ../ so a path-preserving
+# mapping would escape the build dir); vpath tells make where to find them.
+vpath %.c $(COMMON) $(PQCDIR) $(wildcard $(PQCDIR)/*/)
+vpath %.S $(PQCDIR) $(wildcard $(PQCDIR)/*/)
+
+OBJ      := $(addprefix $(BUILD)/,$(notdir $(CSRC:.c=.o))) \
+            $(addprefix $(BUILD)/,$(notdir $(ASMSRC:.S=.o)))
 
 # ---- Rules --------------------------------------------------
 .PHONY: all size flash clean
@@ -91,12 +98,12 @@ OBJ      := $(patsubst %.c,$(BUILD)/%.o,$(CSRC)) \
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex
 
 $(BUILD)/%.o: %.c
-	@mkdir -p $(dir $@)
+	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # AVR assembly (.S) — runs through the preprocessor (assembler-with-cpp).
 $(BUILD)/%.o: %.S
-	@mkdir -p $(dir $@)
+	@mkdir -p $(BUILD)
 	$(CC) $(ASFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJ)
