@@ -64,6 +64,19 @@
           '';
         };
 
+        # Lightweight shell only for building and flashing the firmware (no Python/Snakemake).
+        devShells.firmware = pkgs.mkShell {
+          name = "cmp223-firmware";
+          packages = avr ++ [ pkgs.avrdude pkgs.picocom ];
+
+          shellHook = ''
+            echo "CMP223 firmware shell — AVR toolchain + avrdude"
+            echo "  $(avr-gcc --version | head -1)"
+            echo "  build:  make -C src/firmware ALG=kyber512 VARIANT=asm OPT=-O3"
+            echo "  flash:  make -C src/firmware ALG=kyber512 VARIANT=asm flash PORT=/dev/ttyACM0"
+          '';
+        };
+
         # Firmware build as a derivable/reproducible package.
         # Requires pqc/<alg>/<variant>/ to be vendored first (vendor-pqc.sh).
         packages.firmware = pkgs.stdenv.mkDerivation {

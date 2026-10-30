@@ -56,34 +56,55 @@ EOF
 
 vendor_kyber() {
     clone_ches
-    local base="${TMP}/ches/crypto_kem/kyber"
+    local asm_src="${TMP}/ches/crypto_kem/kyber/avrASM-montgomery-opt-stack/avrASM-LUT-stack"
+    local ref_src="${TMP}/ches/hybrid-kem-mqtt/plugins/kyber/kyber512"
     echo ">> Kyber-512: ref + asm (CHES artifact)"
-    # TODO: confirm the real subfolders (e.g. .../C-ref and .../Montgomery).
     mkdir -p "${PQC}/kyber512/ref" "${PQC}/kyber512/asm"
-    # ref = plain C implementation
-    cp -f "${base}"/C-ref/*.c "${base}"/C-ref/*.h "${PQC}/kyber512/ref/" 2>/dev/null || \
-        echo "!! adjust the Kyber ref path in vendor-pqc.sh"
-    # asm = Montgomery with AVR routines (.S)
-    cp -f "${base}"/Montgomery/*.c "${base}"/Montgomery/*.h "${base}"/Montgomery/*.S \
-        "${PQC}/kyber512/asm/" 2>/dev/null || \
-        echo "!! adjust the Kyber asm path in vendor-pqc.sh"
-    stamp "${PQC}/kyber512/ref" "CHES2026 kyber/C-ref" "${CHES_REPO}" "${TMP}/ches"
-    stamp "${PQC}/kyber512/asm" "CHES2026 kyber/Montgomery(AVR asm)" "${CHES_REPO}" "${TMP}/ches"
+
+    # ref = plain C implementation (adapted for 16-bit int AVR)
+    cp -f "${ref_src}"/*.c "${ref_src}"/*.h "${PQC}/kyber512/ref/"
+    rm -f "${PQC}/kyber512/ref/kem.h" "${PQC}/kyber512/ref/kyber_api.h"
+    cp -f "${asm_src}/api.h" "${asm_src}/randombytes.c" "${asm_src}/randombytes.h" \
+        "${TMP}/ches/crypto_kem/kyber/avrASM-montgomery-stack/avrASM-montgomery-stack/reduce.c" \
+        "${PQC}/kyber512/ref/"
+    sed -i 's/#include "kem.h"/#include "api.h"/' "${PQC}/kyber512/ref/kem.c"
+    sed -i 's/(1 << 12)/(1UL << 12)/g' "${PQC}/kyber512/ref/indcpa.c"
+
+    # asm = Montgomery-opt-stack with AVR routines (.S + .i)
+    cp -f "${asm_src}"/*.c "${asm_src}"/*.h "${asm_src}"/*.S "${asm_src}"/*.i \
+        "${PQC}/kyber512/asm/"
+    rm -f "${PQC}/kyber512/asm/main.c"
+
+    stamp "${PQC}/kyber512/ref" "CHES2026 kyber512 C-ref (AVR-adapted)" "${CHES_REPO}" "${TMP}/ches"
+    stamp "${PQC}/kyber512/asm" "CHES2026 kyber/avrASM-montgomery-opt-stack" "${CHES_REPO}" "${TMP}/ches"
 }
 
 vendor_ctru() {
     clone_ches
-    local base="${TMP}/ches/crypto_kem/CTRU-Light"
+    local ref_src="${TMP}/ches/crypto_kem/CTRU-Light/avr implementation/avrC-sha3/avrC-sha3"
+    local asm_src="${TMP}/ches/crypto_kem/CTRU-Light/avr implementation/avrASM-kred-ascon/avrASM-kred-ascon"
     echo ">> CTRU-Light: ref + asm (CHES artifact)"
-    # TODO: confirm the real subfolders (e.g. .../C-ref(SHA3) and .../Kred-ascon).
     mkdir -p "${PQC}/ctru-light/ref" "${PQC}/ctru-light/asm"
-    cp -f "${base}"/C-ref*/*.c "${base}"/C-ref*/*.h "${PQC}/ctru-light/ref/" 2>/dev/null || \
-        echo "!! adjust the CTRU ref path in vendor-pqc.sh"
-    cp -f "${base}"/Kred-ascon/*.c "${base}"/Kred-ascon/*.h "${base}"/Kred-ascon/*.S \
-        "${PQC}/ctru-light/asm/" 2>/dev/null || \
-        echo "!! adjust the CTRU asm path in vendor-pqc.sh"
-    stamp "${PQC}/ctru-light/ref" "CHES2026 CTRU-Light/C-ref" "${CHES_REPO}" "${TMP}/ches"
-    stamp "${PQC}/ctru-light/asm" "CHES2026 CTRU-Light/Kred-ascon(AVR asm)" "${CHES_REPO}" "${TMP}/ches"
+
+    cp -f "${ref_src}"/*.c "${ref_src}"/*.h "${PQC}/ctru-light/ref/"
+    rm -f "${PQC}/ctru-light/ref/main.c"
+
+    cp -f "${asm_src}"/*.c "${asm_src}"/*.h "${asm_src}"/*.S "${asm_src}"/*.inc \
+        "${PQC}/ctru-light/asm/"
+    rm -f "${PQC}/ctru-light/asm/main.c"
+    cp -rf "${asm_src}/ascon-hash" "${PQC}/ctru-light/asm/"
+
+    # Prefix CTRU-Light KEM entry points with crypto_kem_* to avoid symbol
+    # collision with the harness kem.h (kem_enc / kem_dec).
+    for v in ref asm; do
+        sed -i -e 's/\bkem_keygen\b/crypto_kem_keypair/g' \
+               -e 's/\bkem_enc\b/crypto_kem_enc/g' \
+               -e 's/\bkem_dec\b/crypto_kem_dec/g' \
+               "${PQC}/ctru-light/${v}/api.h" "${PQC}/ctru-light/${v}/kem.c"
+    done
+
+    stamp "${PQC}/ctru-light/ref" "CHES2026 CTRU-Light/avrC-sha3" "${CHES_REPO}" "${TMP}/ches"
+    stamp "${PQC}/ctru-light/asm" "CHES2026 CTRU-Light/avrASM-kred-ascon" "${CHES_REPO}" "${TMP}/ches"
 }
 
 vendor_ecdh() {
@@ -92,10 +113,21 @@ vendor_ecdh() {
     git -C "${TMP}/uecc" checkout --quiet "${UECC_REF}"
     for v in ref asm; do
         mkdir -p "${PQC}/ecdh/${v}"
-        cp -f "${TMP}/uecc/uECC.c" "${TMP}/uecc/uECC.h" "${PQC}/ecdh/${v}/"
-        for f in types.h uECC_vli.h asm_arm.inc asm_avr.inc curve-specific.inc; do
-            [ -f "${TMP}/uecc/${f}" ] && cp -f "${TMP}/uecc/${f}" "${PQC}/ecdh/${v}/" || true
-        done
+        cp -f "${TMP}/uecc"/*.c "${TMP}/uecc"/*.h "${TMP}/uecc"/*.inc "${PQC}/ecdh/${v}/"
+        cat > "${PQC}/ecdh/${v}/platform-specific.inc" <<'EOF'
+#ifndef _UECC_PLATFORM_SPECIFIC_H_
+#define _UECC_PLATFORM_SPECIFIC_H_
+static int default_RNG(uint8_t *dest, unsigned size) {
+    static uint8_t s = 0x5A;
+    for (unsigned i = 0; i < size; ++i) {
+        s = (uint8_t)(s * 13U + 7U + i);
+        dest[i] = s;
+    }
+    return 1;
+}
+#define default_RNG_defined 1
+#endif
+EOF
         stamp "${PQC}/ecdh/${v}" "micro-ecc (uECC)" "${UECC_REPO}" "${TMP}/uecc"
     done
     # The asm variant enables micro-ecc's AVR assembly via a build define.

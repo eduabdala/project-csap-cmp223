@@ -31,9 +31,11 @@ int kem_keypair(uint8_t *pk, uint8_t *sk) {
 }
 
 int kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk) {
-    return CTRU_ENC(ct, ss, pk);
+    /* CTRU-Light signature: (pk, ss, ct) */
+    return CTRU_ENC((uint8_t *)pk, ss, ct);
 }
 
 int kem_dec(uint8_t *ss, const uint8_t *ct, const uint8_t *sk) {
-    return CTRU_DEC(ss, ct, sk);
+    /* CTRU-Light signature: (sk, ct, ss) */
+    return CTRU_DEC((uint8_t *)sk, (uint8_t *)ct, ss);
 }

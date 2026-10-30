@@ -50,35 +50,37 @@ ifeq ($(ALG),kyber512)
               -DKEM_CIPHERTEXTBYTES=768 -DKEM_BYTES=32
 else ifeq ($(ALG),ctru-light)
   ADAPTER  := kem_ctru.c
-  SIZEDEFS := -DKEM_PUBLICKEYBYTES=1206 -DKEM_SECRETKEYBYTES=1206 \
-              -DKEM_CIPHERTEXTBYTES=1206 -DKEM_BYTES=32
+  SIZEDEFS := -DKEM_PUBLICKEYBYTES=640 -DKEM_SECRETKEYBYTES=848 \
+              -DKEM_CIPHERTEXTBYTES=512 -DKEM_BYTES=16
 else ifeq ($(ALG),ecdh)
   ADAPTER  := kem_ecdh.c
   SIZEDEFS := -DKEM_PUBLICKEYBYTES=64 -DKEM_SECRETKEYBYTES=64 \
-              -DKEM_CIPHERTEXTBYTES=64 -DKEM_BYTES=32
+              -DKEM_CIPHERTEXTBYTES=64 -DKEM_BYTES=32 \
+              $(if $(filter asm,$(VARIANT)),-DuECC_PLATFORM=uECC_avr -DuECC_OPTIMIZATION_LEVEL=3,-DuECC_PLATFORM=uECC_arch_other)
 endif
 
 # Vendored source directory: pqc/<ALG>/<VARIANT>/
 PQCDIR   := pqc/$(ALG)/$(VARIANT)
 
 # In the asm variant, also include the .S files (AVR assembly).
-ASMSRC   := $(if $(filter asm,$(VARIANT)),$(wildcard $(PQCDIR)/*.S),)
-
-# ---- Flags --------------------------------------------------
-CFLAGS   := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -DBAUD=$(BAUD) $(SIZEDEFS) \
-            $(OPT) -std=gnu11 -Wall -Wextra \
-            -ffunction-sections -fdata-sections \
-            -funsigned-char -funsigned-bitfields
-ASFLAGS  := -mmcu=$(MCU) -x assembler-with-cpp $(SIZEDEFS)
-LDFLAGS  := -mmcu=$(MCU) -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARGET).map
+ASMSRC   := $(if $(filter asm,$(VARIANT)),$(wildcard $(PQCDIR)/*.S $(PQCDIR)/*/*.S),)
 
 # ---- Sources ------------------------------------------------
 BUILD    := build
 TARGET   := firmware-$(ALG)-$(VARIANT)
 
+# ---- Flags --------------------------------------------------
+DFP_FLAGS := $(if $(wildcard .dfp/gcc/dev/$(MCU)),-B .dfp/gcc/dev/$(MCU) -I .dfp/include,)
+CFLAGS   := -mmcu=$(MCU) $(DFP_FLAGS) -DF_CPU=$(F_CPU) -DBAUD_RATE=$(BAUD) $(SIZEDEFS) \
+            $(OPT) -std=gnu11 -Wall -Wextra \
+            -ffunction-sections -fdata-sections \
+            -funsigned-char -funsigned-bitfields
+ASFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -x assembler-with-cpp $(SIZEDEFS)
+LDFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARGET).map
+
 # main.c + algorithm adapter + vendored C sources (+ .S in the asm variant).
-CSRC     := main.c $(ADAPTER) $(wildcard $(PQCDIR)/*.c)
-INCLUDES := -I. -I$(PQCDIR)
+CSRC     := main.c $(ADAPTER) $(wildcard $(PQCDIR)/*.c $(PQCDIR)/*/*.c)
+INCLUDES := -I. -I$(PQCDIR) $(addprefix -I,$(wildcard $(PQCDIR)/*/))
 
 OBJ      := $(patsubst %.c,$(BUILD)/%.o,$(CSRC)) \
             $(patsubst %.S,$(BUILD)/%.o,$(ASMSRC))
@@ -105,12 +107,15 @@ $(BUILD)/$(TARGET).hex: $(BUILD)/$(TARGET).elf
 
 # Memory report (metric: binary size / headroom)
 size: $(BUILD)/$(TARGET).elf
-	$(SIZE) --mcu=$(MCU) -C $<
+	@$(SIZE) --mcu=$(MCU) -C $< 2>/dev/null || $(SIZE) $<
 
-# Program via UPDI (Nano Every). Adjust PORT to match the host.
+# Program via UPDI (Nano Every).
+# The Nano Every's onboard SAMD11 USB-serial bridge only enters jtag2updi
+# programming mode after a 1200-baud touch on the serial port.
 PORT ?= /dev/ttyACM0
 flash: $(BUILD)/$(TARGET).hex
-	$(AVRDUDE) -c jtag2updi -p $(MCU) -P $(PORT) -U flash:w:$<:i
+	stty -F $(PORT) 1200 hupcl && sleep 0.5
+	$(AVRDUDE) -c jtag2updi -p $(MCU) -P $(PORT) -b 115200 -e -D -U fuse2:w:0x02:m -U flash:w:$<:i
 
 clean:
 	rm -rf $(BUILD)

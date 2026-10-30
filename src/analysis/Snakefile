@@ -84,7 +84,8 @@ rule flash:
         mcu="atmega4809", port=config["serial_port"]
     shell:
         r"""
-        avrdude -c jtag2updi -p {params.mcu} -P {params.port} \
+        stty -F {params.port} 1200 hupcl && sleep 0.5
+        avrdude -c jtag2updi -p {params.mcu} -P {params.port} -b 115200 -e -D \
                 -U flash:w:{input.hex}:i
         """
 

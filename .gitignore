@@ -22,6 +22,7 @@ diagrams/out/
 # Firmware build + analysis artifacts
 src/firmware/build/
 src/firmware/pqc/
+src/firmware/.dfp/
 src/analysis/data/
 __pycache__/
 *.pyc
