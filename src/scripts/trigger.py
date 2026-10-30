@@ -14,6 +14,9 @@ Exemplos de uso:
 
     # Bateria de 5 rodadas coletando o RAW do analisador lógico (CSV):
     ./src/scripts/trigger.py B /dev/ttyACM0 -n 5 --la-out data/raw/bateria_kyber.csv
+
+    # Mesma captura usando o driver libusb embutido em vez do sigrok-cli:
+    ./src/scripts/trigger.py B /dev/ttyACM0 --la-out data/raw/k.csv --la-backend libusb
 """
 import argparse
 import ctypes
@@ -21,10 +24,12 @@ import fcntl
 import os
 import select
 import shutil
+import signal
 import statistics
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
 import threading
 import time
@@ -198,6 +203,69 @@ class Fx2LogicAnalyzer:
             self._usb.libusb_exit(self._ctx)
             self._ctx = ctypes.c_void_p()
         return bytes(self.samples)
+
+
+class SigrokLogicAnalyzer:
+    """Captura contínua via sigrok-cli (fx2lafw cuida do firmware do Saleae Logic).
+
+    Saída em formato 'binary': 1 byte por amostra (bit n = canal Dn), o mesmo
+    layout do coletor libusb, então decode_la_pulses/save_la_csv não mudam.
+    """
+
+    def __init__(self, samplerate: int = 100000, driver: str = "fx2lafw"):
+        self.samplerate = samplerate
+        self.driver = driver
+        self._proc: subprocess.Popen | None = None
+        self._path: str | None = None
+
+    def start(self) -> bool:
+        exe = shutil.which("sigrok-cli")
+        if not exe:
+            print("[LA] sigrok-cli não encontrado no PATH (entre no `nix develop`).", file=sys.stderr)
+            return False
+        fd, self._path = tempfile.mkstemp(prefix="la_", suffix=".bin")
+        os.close(fd)
+        cmd = [
+            exe, "-d", self.driver,
+            "--config", f"samplerate={self.samplerate}",
+            "--continuous", "-O", "binary", "-o", self._path,
+        ]
+        self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        # Pronto quando o arquivo começa a crescer (1º upload de firmware leva ~2 s)
+        deadline = time.perf_counter() + 6.0
+        while time.perf_counter() < deadline:
+            if self._proc.poll() is not None:
+                err = self._proc.stderr.read().decode(errors="replace").strip() if self._proc.stderr else ""
+                print(f"[LA] sigrok-cli encerrou: {err}", file=sys.stderr)
+                self._cleanup()
+                return False
+            if os.path.getsize(self._path) > 0:
+                return True
+            time.sleep(0.05)
+        print("[LA] sigrok-cli não começou a amostrar em 6 s.", file=sys.stderr)
+        self.stop()
+        return False
+
+    def stop(self) -> bytes:
+        if self._proc and self._proc.poll() is None:
+            self._proc.send_signal(signal.SIGINT)  # sigrok-cli finaliza e faz flush do arquivo
+            try:
+                self._proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+        data = b""
+        if self._path and os.path.exists(self._path):
+            with open(self._path, "rb") as f:
+                data = f.read()
+        self._cleanup()
+        return data
+
+    def _cleanup(self) -> None:
+        if self._path and os.path.exists(self._path):
+            os.remove(self._path)
+        self._path = None
+        self._proc = None
 
 
 def decode_la_pulses(raw_bytes: bytes, samplerate: int) -> tuple[int, list[dict]]:
@@ -541,6 +609,17 @@ def main() -> int:
         help="Taxa de amostragem do Analisador Lógico em Hz (padrão: 100000 = 100 kHz)",
     )
     parser.add_argument(
+        "--la-backend",
+        choices=("sigrok", "libusb"),
+        default="sigrok",
+        help="Backend de captura: sigrok (sigrok-cli, padrão) ou libusb (driver fx2lafw embutido)",
+    )
+    parser.add_argument(
+        "--la-driver",
+        default="fx2lafw",
+        help="Driver sigrok do analisador (padrão: fx2lafw p/ Saleae Logic 8ch; ex: saleae-logic16)",
+    )
+    parser.add_argument(
         "--delay",
         type=float,
         default=0.05,
@@ -577,11 +656,14 @@ def main() -> int:
         print(f"Erro ao abrir {args.port}: {e}", file=sys.stderr)
         return 1
 
-    la: Fx2LogicAnalyzer | None = None
+    la: SigrokLogicAnalyzer | Fx2LogicAnalyzer | None = None
     if args.la_out:
-        la = Fx2LogicAnalyzer(samplerate=args.la_rate)
+        if args.la_backend == "sigrok":
+            la = SigrokLogicAnalyzer(samplerate=args.la_rate, driver=args.la_driver)
+        else:
+            la = Fx2LogicAnalyzer(samplerate=args.la_rate)
         if la.start():
-            print(f"[LA] Captura iniciada no Saleae Logic (0925:3881) @ {args.la_rate // 1000} kHz...")
+            print(f"[LA] Captura iniciada no Saleae Logic ({args.la_backend}) @ {args.la_rate // 1000} kHz...")
             time.sleep(0.05)
         else:
             print(
