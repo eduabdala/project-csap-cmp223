@@ -58,34 +58,49 @@ def freedman_diaconis_bins(data):
 
 def plot_raw_timeseries(rows, out_path):
     """Plot every single raw observation across the execution timeline (Jain Ch. 11.4)."""
-    fig, ax = plt.subplots(figsize=(11, 5.5))
-    fig.subplots_adjust(left=0.08, right=0.96, top=0.88, bottom=0.12)
-
-    variants = sorted(list({r.get("variant", "default") for r in rows}))
-    marker_map = {"asm": "o", "ref": "s", "default": "^"}
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.subplots_adjust(left=0.08, right=0.76, top=0.88, bottom=0.12)
 
     # Sort by run_order
     sorted_rows = sorted(rows, key=lambda x: int(x.get("run_order", 0)))
+    algs = sorted(list({r.get("algorithm", "kyber512") for r in rows}))
+    variants = sorted(list({r.get("variant", "default") for r in rows}))
 
-    for op in ["keygen", "encaps", "decaps", "msgcrypt"]:
-        color = OKABE_ITO.get(op, "#333333")
-        label_op = OP_LABELS.get(op, op)
-        for var in variants:
-            subset = [r for r in sorted_rows if r.get("operation") == op and r.get("variant", "default") == var]
-            if not subset:
-                continue
-            x = [int(r["run_order"]) for r in subset]
-            y = [float(r["latency_ms"]) for r in subset]
-            marker = marker_map.get(var, "o")
-            ax.plot(x, y, marker=marker, markersize=6, linestyle="-", linewidth=1.2,
-                    alpha=0.85, color=color, label=f"{label_op} [{var.upper()}]")
+    marker_map = {"asm": "o", "ref": "s", "default": "^"}
+    color_map = {
+        ("kyber512", "keygen"): "#0072B2",
+        ("kyber512", "encaps"): "#56B4E9",
+        ("kyber512", "decaps"): "#009E73",
+        ("kyber512", "msgcrypt"): "#999999",
+        ("ctru-light", "keygen"): "#E69F00",
+        ("ctru-light", "encaps"): "#F0E442",
+        ("ctru-light", "decaps"): "#D55E00",
+        ("ctru-light", "msgcrypt"): "#CC79A7",
+        ("ecdh", "keygen"): "#882255",
+        ("ecdh", "encaps"): "#AA4499",
+        ("ecdh", "decaps"): "#117733",
+        ("ecdh", "msgcrypt"): "#332288",
+    }
+
+    for alg in algs:
+        for op in ["keygen", "encaps", "decaps", "msgcrypt"]:
+            for var in variants:
+                subset = [r for r in sorted_rows if r.get("algorithm") == alg and r.get("operation") == op and r.get("variant", "default") == var]
+                if not subset:
+                    continue
+                x = [int(r["run_order"]) for r in subset]
+                y = [float(r["latency_ms"]) for r in subset]
+                marker = marker_map.get(var, "o")
+                c = color_map.get((alg, op), OKABE_ITO.get(op, "#333333"))
+                lbl = f"{alg} {op} [{var.upper()}]"
+                ax.plot(x, y, marker=marker, markersize=5, linestyle="-", linewidth=1.1,
+                        alpha=0.85, color=c, label=lbl)
 
     ax.set_title("Complete Raw Observations Across Trial Sequence (Run Order)", fontsize=11.5, fontweight="bold", pad=10)
     ax.set_xlabel("Execution Run Order (Sequential Trial Index)", fontsize=9.5, fontweight="medium")
     ax.set_ylabel("Execution Latency (ms)", fontsize=9.5, fontweight="medium")
     ax.grid(True, linestyle="--", alpha=0.5)
-    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8.2, framealpha=0.9, edgecolor="#CCCCCC")
-    fig.subplots_adjust(right=0.78)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=7.5, framealpha=0.9, edgecolor="#CCCCCC")
 
     fig.text(
         0.08, 0.02,
@@ -214,71 +229,190 @@ def plot_unified_real_scale_histogram(rows, out_path):
 
 def plot_boxplot_with_raw_points(rows, out_path):
     """Plot boxplots with all individual raw data points overlaid as a jittered strip plot."""
-    variants = sorted(list({r.get("variant", "default") for r in rows}))
+    algs = sorted(list({r.get("algorithm", "kyber512") for r in rows}))
     ordered_ops = ["keygen", "encaps", "decaps", "msgcrypt"]
-
-    fig, axes = plt.subplots(1, 4, figsize=(13.5, 4.8))
-    fig.subplots_adjust(left=0.06, right=0.97, top=0.84, bottom=0.14, wspace=0.32)
-
     rng = np.random.default_rng(42)
 
-    for idx, op in enumerate(ordered_ops):
-        ax = axes[idx]
-        color = OKABE_ITO.get(op, "#333333")
-        label = OP_LABELS.get(op, op)
+    for alg in algs:
+        alg_rows = [r for r in rows if r.get("algorithm", "kyber512") == alg]
+        variants = sorted(list({r.get("variant", "default") for r in alg_rows}))
 
-        box_data = []
-        labels = []
-        for var in variants:
-            vals = [float(r["latency_ms"]) for r in rows if r.get("operation") == op and r.get("variant", "default") == var]
-            box_data.append(vals)
-            labels.append(var.upper())
+        fig, axes = plt.subplots(1, 4, figsize=(13.5, 4.8))
+        fig.subplots_adjust(left=0.06, right=0.97, top=0.84, bottom=0.14, wspace=0.32)
 
-        # Render boxplot
-        bp = ax.boxplot(
-            box_data,
-            labels=labels,
-            patch_artist=True,
-            showmeans=True,
-            meanline=True,
-            medianprops=dict(color="#111111", linewidth=1.8),
-            meanprops=dict(color="#D55E00", linewidth=1.5, linestyle="--"),
-            whiskerprops=dict(color="#555555", linewidth=1.2),
-            capprops=dict(color="#555555", linewidth=1.2),
-            flierprops=dict(marker='x', color='red', markersize=6)
-        )
+        for idx, op in enumerate(ordered_ops):
+            ax = axes[idx]
+            color = OKABE_ITO.get(op, "#333333")
+            label = OP_LABELS.get(op, op)
 
-        for patch in bp['boxes']:
-            patch.set_facecolor(color)
-            patch.set_alpha(0.35)
-            patch.set_edgecolor(color)
-            patch.set_linewidth(1.3)
+            box_data = []
+            labels = []
+            for var in variants:
+                vals = [float(r["latency_ms"]) for r in alg_rows if r.get("operation") == op and r.get("variant", "default") == var]
+                box_data.append(vals)
+                labels.append(var.upper())
 
-        # Overlay ALL individual raw observation points with jitter
-        for var_idx, vals in enumerate(box_data, start=1):
-            if not vals:
-                continue
-            jitter = rng.uniform(-0.12, 0.12, size=len(vals))
-            ax.scatter(
-                np.full_like(vals, var_idx) + jitter,
-                vals,
-                color=color,
-                edgecolors="#222222",
-                linewidths=0.7,
-                s=36,
-                alpha=0.9,
-                zorder=4,
-                label="Raw Observation" if var_idx == 1 and idx == 0 else ""
+            # Render boxplot
+            bp = ax.boxplot(
+                box_data,
+                labels=labels,
+                patch_artist=True,
+                showmeans=True,
+                meanline=True,
+                medianprops=dict(color="#111111", linewidth=1.8),
+                meanprops=dict(color="#D55E00", linewidth=1.5, linestyle="--"),
+                whiskerprops=dict(color="#555555", linewidth=1.2),
+                capprops=dict(color="#555555", linewidth=1.2),
+                flierprops=dict(marker='x', color='red', markersize=6)
             )
 
-        ax.set_title(label, fontsize=10, fontweight="bold", pad=8,
-                     bbox=dict(boxstyle="square,pad=0.3", facecolor="#F5F5F5", edgecolor="#DDDDDD", linewidth=0.6))
-        ax.set_ylabel("Latency (ms)" if idx == 0 else "", fontsize=9, fontweight="medium")
+            for patch in bp['boxes']:
+                patch.set_facecolor(color)
+                patch.set_alpha(0.35)
+                patch.set_edgecolor(color)
+                patch.set_linewidth(1.3)
+
+            # Overlay ALL individual raw observation points with jitter
+            for var_idx, vals in enumerate(box_data, start=1):
+                if not vals:
+                    continue
+                jitter = rng.uniform(-0.12, 0.12, size=len(vals))
+                ax.scatter(
+                    np.full_like(vals, var_idx) + jitter,
+                    vals,
+                    color=color,
+                    edgecolors="#222222",
+                    linewidths=0.7,
+                    s=36,
+                    alpha=0.9,
+                    zorder=4,
+                    label="Raw Observation" if var_idx == 1 and idx == 0 else ""
+                )
+
+            ax.set_title(label, fontsize=10, fontweight="bold", pad=8,
+                         bbox=dict(boxstyle="square,pad=0.3", facecolor="#F5F5F5", edgecolor="#DDDDDD", linewidth=0.6))
+            ax.set_ylabel("Latency (ms)" if idx == 0 else "", fontsize=9, fontweight="medium")
+            ax.grid(True, linestyle="--", alpha=0.4, axis="y")
+
+        fig.suptitle(
+            f"Individual Raw Observations & Distribution Spread: {alg.upper()} (Boxplot + Strip Points)",
+            fontsize=12,
+            fontweight="bold",
+            x=0.06,
+            ha="left",
+            y=0.96
+        )
+        fig.text(
+            0.06, 0.90,
+            "Every single measurement is plotted as a distinct point over the boxplot (Median: solid black, Mean: dashed vermilion).",
+            fontsize=8.5,
+            color="#555555",
+            ha="left"
+        )
+
+        png_name = f"{out_path}_boxplot_{alg}.png" if len(algs) > 1 else f"{out_path}_boxplot_points.png"
+        pdf_name = f"{out_path}_boxplot_{alg}.pdf" if len(algs) > 1 else f"{out_path}_boxplot_points.pdf"
+        plt.savefig(png_name, dpi=300)
+        plt.savefig(pdf_name)
+        plt.close()
+        print(f"[plot_histogram] Boxplot with raw individual points saved to:\n  - {png_name}\n  - {pdf_name}")
+
+
+def plot_cross_algorithm_comparison(rows, out_path):
+    """Plot comprehensive multi-algorithm comparison across KeyGen, Encaps, Decaps, and Stack Peak."""
+    algs = sorted(list({r.get("algorithm", "kyber512") for r in rows}))
+    if len(algs) < 2:
+        return
+
+    # Filter to ASM variant with -O3 for direct apples-to-apples comparison
+    comp_rows = [r for r in rows if r.get("variant") == "asm" and r.get("optimization") in ("-O3", "O3")]
+    if not comp_rows:
+        comp_rows = [r for r in rows if r.get("variant") == "asm"]
+
+    ops = ["keygen", "encaps", "decaps"]
+    op_titles = {"keygen": "KeyGen (K)", "encaps": "Encaps (E)", "decaps": "Decaps (D)"}
+
+    fig, axes = plt.subplots(1, 4, figsize=(16, 5.2))
+    fig.subplots_adjust(left=0.06, right=0.96, top=0.82, bottom=0.15, wspace=0.32)
+
+    alg_colors = {
+        "ctru-light": "#009E73",  # Green
+        "kyber512":   "#0072B2",  # Blue
+        "ecdh":       "#D55E00",  # Vermilion
+    }
+
+    # Panels 1-3: Crypto Operations Latency (ms)
+    for idx, op in enumerate(ops):
+        ax = axes[idx]
+        alg_means = []
+        alg_stds = []
+        labels = []
+        colors = []
+
+        for alg in algs:
+            subset = [float(r["latency_ms"]) for r in comp_rows if r.get("algorithm") == alg and r.get("operation") == op]
+            if subset:
+                alg_means.append(np.mean(subset))
+                alg_stds.append(np.std(subset, ddof=1) if len(subset) > 1 else 0.0)
+                labels.append(alg)
+                colors.append(alg_colors.get(alg, "#555555"))
+
+        x_pos = np.arange(len(labels))
+        bars = ax.bar(x_pos, alg_means, yerr=alg_stds, capsize=5, color=colors, alpha=0.85, edgecolor="#222222", linewidth=1.0)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels([l.upper() for l in labels], fontsize=9.5, fontweight="bold")
+        ax.set_title(op_titles[op], fontsize=11, fontweight="bold", pad=8)
+        ax.set_ylabel("Execution Latency (ms)" if idx == 0 else "", fontsize=9.5, fontweight="medium")
         ax.grid(True, linestyle="--", alpha=0.4, axis="y")
 
+        # Value annotations
+        for bar in bars:
+            h = bar.get_height()
+            ax.annotate(
+                f"{h:.1f} ms",
+                xy=(bar.get_x() + bar.get_width() / 2, h),
+                xytext=(0, 4),
+                textcoords="offset points",
+                ha="center", va="bottom",
+                fontsize=8.5, fontweight="bold"
+            )
+
+    # Panel 4: Peak Stack RAM Usage
+    ax_stack = axes[3]
+    stack_vals = []
+    labels_stack = []
+    colors_stack = []
+    for alg in algs:
+        subset = [int(r["stack_peak_b"]) for r in comp_rows if r.get("algorithm") == alg]
+        if subset:
+            stack_vals.append(max(subset))
+            labels_stack.append(alg)
+            colors_stack.append(alg_colors.get(alg, "#555555"))
+
+    x_pos_st = np.arange(len(labels_stack))
+    bars_st = ax_stack.bar(x_pos_st, stack_vals, color=colors_stack, alpha=0.85, edgecolor="#222222", linewidth=1.0)
+    ax_stack.axhline(6144, color="#CC0000", linestyle=":", linewidth=1.4, label="Total SRAM (6 KB)")
+    ax_stack.set_xticks(x_pos_st)
+    ax_stack.set_xticklabels([l.upper() for l in labels_stack], fontsize=9.5, fontweight="bold")
+    ax_stack.set_title("Peak Stack Usage (B)", fontsize=11, fontweight="bold", pad=8)
+    ax_stack.set_ylabel("Bytes in SRAM", fontsize=9.5, fontweight="medium")
+    ax_stack.grid(True, linestyle="--", alpha=0.4, axis="y")
+    ax_stack.legend(loc="upper right", fontsize=8.2, framealpha=0.9)
+
+    for bar in bars_st:
+        h = bar.get_height()
+        ax_stack.annotate(
+            f"{int(h)} B\n({(6144-h)/6144*100:.0f}% free)",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center", va="bottom",
+            fontsize=8.2, fontweight="bold"
+        )
+
     fig.suptitle(
-        "Individual Raw Observations & Distribution Spread by Operation (Boxplot + Strip Points)",
-        fontsize=12,
+        "Cross-Algorithm Performance & Memory Benchmark on Physical ATmega4809 (20 MHz, ASM, -O3)",
+        fontsize=13,
         fontweight="bold",
         x=0.06,
         ha="left",
@@ -286,18 +420,18 @@ def plot_boxplot_with_raw_points(rows, out_path):
     )
     fig.text(
         0.06, 0.90,
-        "Every single measurement is plotted as a distinct point over the boxplot (Median: solid black, Mean: dashed vermilion).",
-        fontsize=8.5,
+        "Direct hardware comparison between Post-Quantum KEMs (Kyber-512, CTRU-Light) and Classical ECDH (secp256r1 / micro-ecc).",
+        fontsize=9,
         color="#555555",
         ha="left"
     )
 
-    png_path = f"{out_path}_boxplot_points.png"
-    pdf_path = f"{out_path}_boxplot_points.pdf"
-    plt.savefig(png_path, dpi=300)
-    plt.savefig(pdf_path)
+    png_comp = f"{out_path}_cross_algorithm_comparison.png"
+    pdf_comp = f"{out_path}_cross_algorithm_comparison.pdf"
+    plt.savefig(png_comp, dpi=300)
+    plt.savefig(pdf_comp)
     plt.close()
-    print(f"[plot_histogram] Boxplot with raw individual points saved to:\n  - {png_path}\n  - {pdf_path}")
+    print(f"[plot_histogram] Cross-algorithm comparison saved to:\n  - {png_comp}\n  - {pdf_comp}")
 
 def main():
     ap = argparse.ArgumentParser(description="Generate distribution histograms for Experiment 0")
@@ -334,105 +468,113 @@ def main():
 
     ordered_ops = ["keygen", "encaps", "decaps", "msgcrypt"]
 
-    for var in variants:
-        var_rows = [r for r in rows if r.get("variant", "default") == var]
-        by_op = {}
-        for r in var_rows:
-            by_op.setdefault(r["operation"], []).append(float(r["latency_ms"]))
+    algs = sorted(list({r.get("algorithm", "kyber512") for r in rows}))
 
-        fig, axes = plt.subplots(2, 2, figsize=(10, 7.5))
-        fig.subplots_adjust(left=0.08, right=0.96, top=0.88, bottom=0.09, hspace=0.36, wspace=0.22)
+    for alg in algs:
+        alg_rows = [r for r in rows if r.get("algorithm", "kyber512") == alg]
+        variants = sorted(list({r.get("variant", "default") for r in alg_rows}))
+        for var in variants:
+            var_rows = [r for r in alg_rows if r.get("variant", "default") == var]
+            by_op = {}
+            for r in var_rows:
+                by_op.setdefault(r["operation"], []).append(float(r["latency_ms"]))
 
-        for idx, op in enumerate(ordered_ops):
-            ax = axes[idx // 2, idx % 2]
-            data = np.array(by_op.get(op, []))
-            if len(data) == 0:
-                continue
-            color = OKABE_ITO[op]
-            label = OP_LABELS[op]
+            fig, axes = plt.subplots(2, 2, figsize=(10, 7.5))
+            fig.subplots_adjust(left=0.08, right=0.96, top=0.88, bottom=0.09, hspace=0.36, wspace=0.22)
 
-            n = len(data)
-            mean_val = np.mean(data)
-            std_val = np.std(data, ddof=1) if n > 1 else 0.0
-            median_val = np.median(data)
-            t_crit = 2.045 if n == 30 else (2.262 if n == 10 else 1.96)
-            ci95 = t_crit * (std_val / math.sqrt(n)) if n > 1 else 0.0
+            for idx, op in enumerate(ordered_ops):
+                ax = axes[idx // 2, idx % 2]
+                data = np.array(by_op.get(op, []))
+                if len(data) == 0:
+                    continue
+                color = OKABE_ITO[op]
+                label = OP_LABELS[op]
 
-            # 1. Real Trial Counts (density=False, no probability density)
-            bins = max(5, freedman_diaconis_bins(data)) if std_val > 0 else 5
-            counts, bin_edges, patches = ax.hist(
-                data,
-                bins=bins,
-                density=False,
-                color=color,
-                alpha=0.65,
-                edgecolor=color,
-                linewidth=1.2,
-                zorder=2
-            )
+                n = len(data)
+                mean_val = np.mean(data)
+                std_val = np.std(data, ddof=1) if n > 1 else 0.0
+                median_val = np.median(data)
+                t_crit = 2.045 if n == 30 else (2.262 if n == 10 else 1.96)
+                ci95 = t_crit * (std_val / math.sqrt(n)) if n > 1 else 0.0
 
-            # 2. Rug plot on x-axis (individual observations)
-            max_c = max(counts) if len(counts) > 0 and max(counts) > 0 else 1.0
-            ax.plot(data, np.zeros_like(data) + 0.1, '|', color="#222222",
-                    markersize=10, markeredgewidth=1.4, zorder=4)
+                # 1. Real Trial Counts (density=False, no probability density)
+                bins = max(5, freedman_diaconis_bins(data)) if std_val > 0 else 5
+                counts, bin_edges, patches = ax.hist(
+                    data,
+                    bins=bins,
+                    density=False,
+                    color=color,
+                    alpha=0.65,
+                    edgecolor=color,
+                    linewidth=1.2,
+                    zorder=2
+                )
 
-            # 3. Central tendency markers: Mean with 95% CI & Median
-            ax.axvline(mean_val, color="#000000", linestyle="--", linewidth=1.4, zorder=5, label=f"Mean: {mean_val:.2f} ms")
-            if ci95 > 0:
-                ax.axvspan(mean_val - ci95, mean_val + ci95, color="#555555", alpha=0.18, zorder=1, label=f"95% CI [±{ci95:.3f}]")
-            ax.axvline(median_val, color="#D55E00" if color != "#D55E00" else "#0072B2",
-                       linestyle=":", linewidth=1.5, zorder=5, label=f"Median: {median_val:.2f} ms")
+                # 2. Rug plot on x-axis (individual observations)
+                max_c = max(counts) if len(counts) > 0 and max(counts) > 0 else 1.0
+                ax.plot(data, np.zeros_like(data) + 0.1, '|', color="#222222",
+                        markersize=10, markeredgewidth=1.4, zorder=4)
 
-            ax.set_title(
-                f"{label}  (N = {n}, $\\bar{{x}} = {mean_val:.2f}$ ms, $s = {std_val:.3f}$ ms)",
-                fontsize=10,
+                # 3. Central tendency markers: Mean with 95% CI & Median
+                ax.axvline(mean_val, color="#000000", linestyle="--", linewidth=1.4, zorder=5, label=f"Mean: {mean_val:.2f} ms")
+                if ci95 > 0:
+                    ax.axvspan(mean_val - ci95, mean_val + ci95, color="#555555", alpha=0.18, zorder=1, label=f"95% CI [±{ci95:.3f}]")
+                ax.axvline(median_val, color="#D55E00" if color != "#D55E00" else "#0072B2",
+                           linestyle=":", linewidth=1.5, zorder=5, label=f"Median: {median_val:.2f} ms")
+
+                ax.set_title(
+                    f"{label}  (N = {n}, $\\bar{{x}} = {mean_val:.2f}$ ms, $s = {std_val:.3f}$ ms)",
+                    fontsize=10,
+                    fontweight="bold",
+                    pad=8,
+                    bbox=dict(boxstyle="square,pad=0.35", facecolor="#F2F2F2", edgecolor="#CCCCCC", linewidth=0.7)
+                )
+
+                ax.set_xlabel("Execution Latency (ms)", fontsize=9.2, fontweight="medium")
+                ax.set_ylabel("Observed Trials (Count)", fontsize=9.2, fontweight="medium")
+                y_max_int = max(4, int(max_c)) + 1
+                ax.set_ylim(bottom=0, top=y_max_int)
+                ax.set_yticks(list(range(1, y_max_int + 1)))
+                ax.legend(loc="upper right", fontsize=7.5, framealpha=0.9, edgecolor="#CCCCCC")
+
+            # Global Jain / Tidyverse Typography
+            fig.suptitle(
+                f"Empirical Execution Latency Distributions: {alg.upper()} ({var.upper()} variant)",
+                fontsize=12.5,
                 fontweight="bold",
-                pad=8,
-                bbox=dict(boxstyle="square,pad=0.35", facecolor="#F2F2F2", edgecolor="#CCCCCC", linewidth=0.7)
+                x=0.08,
+                ha="left",
+                y=0.97
+            )
+            fig.text(
+                0.08, 0.93,
+                f"System Under Test (SUT): Microchip ATmega4809 (8-bit AVRxt @ 20.0 MHz, {var} variant) | Jain DoE: N={len(var_rows)//4} replications",
+                fontsize=8.5,
+                color="#555555",
+                ha="left"
+            )
+            fig.text(
+                0.08, 0.02,
+                "Note: Y-axis represents real trial counts (density=False). Shaded regions depict 95% Student's t Confidence Intervals. Rug plot at baseline indicates individual observations.",
+                fontsize=7.8,
+                color="#777777",
+                ha="left"
             )
 
-            ax.set_xlabel("Execution Latency (ms)", fontsize=9.2, fontweight="medium")
-            ax.set_ylabel("Observed Trials (Count)", fontsize=9.2, fontweight="medium")
-            y_max_int = max(4, int(max_c)) + 1
-            ax.set_ylim(bottom=0, top=y_max_int)
-            ax.set_yticks(list(range(1, y_max_int + 1)))
-            ax.legend(loc="upper right", fontsize=7.5, framealpha=0.9, edgecolor="#CCCCCC")
-
-        # Global Jain / Tidyverse Typography
-        fig.suptitle(
-            f"Empirical Execution Latency Distributions: ML-KEM-512 ({var.upper()} variant)",
-            fontsize=12.5,
-            fontweight="bold",
-            x=0.08,
-            ha="left",
-            y=0.97
-        )
-        fig.text(
-            0.08, 0.93,
-            f"System Under Test (SUT): Microchip ATmega4809 (8-bit AVRxt @ 20.0 MHz, -O3, {var} variant) | Jain DoE: N={len(var_rows)//4} replications",
-            fontsize=8.5,
-            color="#555555",
-            ha="left"
-        )
-        fig.text(
-            0.08, 0.02,
-            "Note: Y-axis represents real trial counts (density=False). Shaded regions depict 95% Student's t Confidence Intervals. Rug plot at baseline indicates individual observations.",
-            fontsize=7.8,
-            color="#777777",
-            ha="left"
-        )
-
-        out_suffix = f"_{var}" if len(variants) > 1 else ""
-        out_png = f"{args.out}{out_suffix}.png"
-        out_pdf = f"{args.out}{out_suffix}.pdf"
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        plt.savefig(out_png, dpi=300)
-        plt.savefig(out_pdf)
-        plt.close()
-        print(f"[plot_histogram] Plots successfully saved to:\n  - {out_png}\n  - {out_pdf}")
+            out_suffix = f"_{alg}_{var}" if len(algs) > 1 else (f"_{var}" if len(variants) > 1 else "")
+            out_png = f"{args.out}{out_suffix}.png"
+            out_pdf = f"{args.out}{out_suffix}.pdf"
+            os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+            plt.savefig(out_png, dpi=300)
+            plt.savefig(out_pdf)
+            plt.close()
+            print(f"[plot_histogram] Plots successfully saved to:\n  - {out_png}\n  - {out_pdf}")
 
     # Generate unified real-scale comparative histogram
     plot_unified_real_scale_histogram(rows, args.out)
+
+    # Generate cross-algorithm comparison
+    plot_cross_algorithm_comparison(rows, args.out)
 
     # Generate additional visualizations exposing every single raw observation:
     plot_raw_timeseries(rows, args.out)

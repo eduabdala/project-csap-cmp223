@@ -145,12 +145,16 @@ def run_hardware_collection(port, repeats, exp_dir, combo, use_la=False):
     log_path = os.path.join(exp_dir, "raw", f"console_{prefix}.log")
     la_csv = os.path.join(exp_dir, "raw", f"la_{prefix}.csv")
 
+    # Dynamic timeout: ECDH pure C requires ~14s for Encaps (2x 256-bit scalar mult on 8-bit AVR)
+    timeout_sec = 35.0 if (combo["alg"] == "ecdh" and combo["variant"] == "ref") else 15.0
+
     cmd = [
         sys.executable, "src/scripts/trigger.py",
         "BM", port,
         "-n", str(repeats),
         "--msg", "Sensor Temp: 24.8C",
         "--alg", combo["alg"],
+        "--timeout", str(timeout_sec),
         "--json-out", json_path
     ]
     if use_la:
