@@ -149,7 +149,7 @@ padrão ML-KEM, e o CTRU-Light~\citep{ctrulight2026}, um KEM desenhado para
 nós sensores AVR. As contribuições são:
 \begin{itemize}
   \item um projeto fatorial completo sobre algoritmo, implementação e
-        otimização do compilador, executado em bancada com ordem aleatorizada;
+        otimização do compilador, executado em bancada;
   \item a quantificação, por modelo linear, de quanto cada fator explica da
         latência;
   \item um pipeline reprodutível em que dados brutos, desenho experimental,
@@ -229,9 +229,15 @@ pendente. \emph{Nenhum valor de energia é reportado neste texto.}
 Seguimos um projeto fatorial completo~\citep{jain1991} com os fatores e níveis
 da Tabela~\ref{tab:fatores}. A matriz de fatores é gerada por código
 (\texttt{design.py}, com pyDOE3~\citep{pydoe3}) a partir de um arquivo de
-configuração. A ordem das execuções é aleatorizada com semente fixa e
-registrada em \texttt{schedule.json}, para evitar que deriva térmica ou outros
-efeitos temporais se confundam com os fatores.
+configuração. O planejador também sorteia, com semente fixa, uma ordem
+aleatória para todas as execuções e a registra em \texttt{schedule.json}.
+\emph{Nas campanhas de bancada deste texto, porém, essa ordem não foi
+aplicada}: o executor grava uma configuração de firmware por vez e repete o
+ciclo fixo \textsf{KeyGen}$\rightarrow$\textsf{Encaps}$\rightarrow$\textsf{Decaps}
+dentro dela. A gravação da Flash a cada ensaio tornaria a aleatorização
+completa cara; a alternativa planejada é sortear a ordem das configurações e a
+das operações dentro de cada uma. A ausência de deriva ao longo da execução é
+verificada no caderno de análise.
 
 \begin{table}[t]
   \caption{Fatores e níveis do projeto experimental. O clock e o ECDH estão
@@ -376,16 +382,21 @@ milissegundos ganhos.
 O \textsf{KeyGen} e o \textsf{Encaps} do CTRU-Light têm coeficiente de
 variação de 3\% a 6\% e mediana acima da média, o que sugere uma distribuição
 bimodal, possivelmente por amostragem com rejeição; a causa ainda não foi
-verificada no código. A operação de cifragem simétrica que complementa o
-protocolo, comum a todos os firmwares, fica entre 38,4 e 39,2~ms em todas as
-configurações $-$O3, o que funciona como controle de estabilidade entre
-campanhas.
+verificada no código. A cifragem da mensagem que complementa o protocolo
+(um XOR simples com o segredo, idêntico em todos os firmwares e fora do KEM)
+fica entre 38,4 e 39,2~ms em todas as configurações $-$O3. Como ela é quase
+toda \emph{overhead} de comunicação, serve de controle de estabilidade entre
+campanhas e dá uma ordem de grandeza desse \emph{overhead}.
 
 \subsection{Limitações}
 \begin{enumerate}
   \item A latência inclui o \emph{overhead} serial do host; as razões entre
         configurações são mais confiáveis que os valores absolutos. A medição
         pelo pulso GPIO no analisador lógico removerá esse viés.
+  \item A ordem de execução não foi aleatorizada na bancada (cada
+        configuração rodou em bloco, com ciclo fixo de operações). Efeitos
+        temporais dentro de uma campanha podem, em princípio, confundir-se
+        com a configuração.
   \item Só 20~MHz foi coletado, então o fator clock ainda não entra no modelo.
   \item A energia não foi medida (shunt e bateria pendentes).
   \item Não há dados de bancada do ECDH.
