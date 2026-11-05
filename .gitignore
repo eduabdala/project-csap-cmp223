@@ -20,6 +20,8 @@ marp-ppt/
 *.synctex.gz
 *.bbl
 *.blg
+artigo/main.pdf
+*.cut
 .kiro
 
 # Firmware build + analysis artifacts
@@ -30,6 +32,8 @@ src/firmware/.dfp/
 src/firmware/atmega4809/.dfp/
 src/firmware/rp2040/.pico-sdk/
 src/analysis/data/
+.venv/
+.ipynb_checkpoints/
 __pycache__/
 *.pyc
 result

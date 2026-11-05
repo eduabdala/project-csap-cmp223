@@ -56,7 +56,9 @@ jobs:
         if: steps.check.outputs.found == 'true'
         uses: xu-cheng/latex-action@v3
         with:
-          root_file: artigo/main.tex
+          # Compila dentro de artigo/: \input{tables/..} e \graphicspath são relativos a ela.
+          working_directory: artigo
+          root_file: main.tex
           latexmk_use_lualatex: false
           args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
 
@@ -65,7 +67,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: artigo-pdf
-          path: '*.pdf'
+          path: artigo/main.pdf
           if-no-files-found: error
           retention-days: 90
 

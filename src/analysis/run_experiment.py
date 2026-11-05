@@ -226,7 +226,11 @@ def simulate_trial(task, trial_order, rng):
         "energy_uj": round(energy_uj, 2),
         "kem_validated": True if op == "decaps" else None,
         "msg_validated": True if op == "msgcrypt" else None,
-        "status": "OK"
+        "status": "OK",
+        # Provenance: every value above comes from a MODEL, not a measurement.
+        "data_source": "sim",
+        "latency_method": "model",
+        "energy_method": "model",
     }
 
 def generate_histograms(raw_csv_path, output_prefix):
@@ -261,9 +265,16 @@ def aggregate_experiment(raw_records, summary_csv_path):
         median_lat = sorted_lats[n // 2] if n % 2 != 0 else (sorted_lats[n // 2 - 1] + sorted_lats[n // 2]) / 2.0
         iqr_lat = sorted_lats[(3 * n) // 4] - sorted_lats[n // 4]
 
-        mean_en = sum(energies) / n
-        std_en = math.sqrt(sum((x - mean_en)**2 for x in energies) / (n - 1)) if n > 1 else 0.0
-        ci_en = t_crit * (std_en / math.sqrt(n)) if n > 1 else 0.0
+        # Energy may be missing (bench without shunt): report NA, never a guess.
+        en_vals = [x for x in energies if x is not None]
+        n_en = len(en_vals)
+        if n_en:
+            mean_raw = sum(en_vals) / n_en
+            std_en = math.sqrt(sum((x - mean_raw)**2 for x in en_vals) / (n_en - 1)) if n_en > 1 else 0.0
+            mean_en = round(mean_raw, 2)
+            ci_en = round(get_t_crit(n_en - 1) * (std_en / math.sqrt(n_en)), 2) if n_en > 1 else 0.0
+        else:
+            mean_en = ci_en = None
 
         summary_rows.append({
             "algorithm": alg,
@@ -277,8 +288,8 @@ def aggregate_experiment(raw_records, summary_csv_path):
             "latency_ms_ci95": round(ci_lat, 4),
             "latency_ms_median": round(median_lat, 4),
             "latency_ms_iqr": round(iqr_lat, 4),
-            "energy_uj_mean": round(mean_en, 2),
-            "energy_uj_ci95": round(ci_en, 2),
+            "energy_uj_mean": mean_en,
+            "energy_uj_ci95": ci_en,
             "stack_peak_bytes": stacks[0]
         })
 
@@ -305,14 +316,21 @@ def write_markdown_report(exp_dir, args, summary_rows, raw_records, total_trials
         f.write(f"- **Randomization Seed (Jain Ch. 11.4):** `{args.seed}`\n")
         f.write(f"- **Replications per Cell ($N$):** `{args.n}`\n")
         f.write(f"- **Total Raw Observations Recorded:** `{len(raw_records)}`\n\n")
+        if args.mode == "sim":
+            f.write("> **WARNING: SIMULATED DATA.** Every value in this report comes from a "
+                    "noise model (`simulate_trial`), not from the board. Do not report it as a measurement.\n\n")
+        else:
+            f.write("> Latency = host-side time until the first serial byte (includes UART/USB overhead). "
+                    "Energy = NA: shunt/battery not installed yet.\n\n")
 
         f.write("## 1. Experimental Summary Table\n\n")
         f.write("| Algorithm | Variant | Opt | Clock | Operation | N | Mean Lat (ms) | 95% CI (ms) | Median (ms) | IQR (ms) | Mean Energy (uJ) | Stack Peak (B) |\n")
         f.write("| :--- | :---: | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
         for s in summary_rows:
+            en_str = "NA" if s["energy_uj_mean"] is None else f"{s['energy_uj_mean']:.1f}"
             f.write(f"| {s['algorithm']} | {s['variant']} | {s['optimization']} | {s['clock_mhz']} MHz | "
                     f"{s['operation']} | {s['sample_size']} | {s['latency_ms_mean']:.3f} | ±{s['latency_ms_ci95']:.3f} | "
-                    f"{s['latency_ms_median']:.3f} | {s['latency_ms_iqr']:.3f} | {s['energy_uj_mean']:.1f} | {s['stack_peak_bytes']} |\n")
+                    f"{s['latency_ms_median']:.3f} | {s['latency_ms_iqr']:.3f} | {en_str} | {s['stack_peak_bytes']} |\n")
 
         f.write("\n## 2. Complete Raw Observations Log (All Individual Measurements)\n\n")
         f.write("| Run # | Rep | Variant | Operation | Latency (ms) | Total UART (ms) | Cycles (@20MHz) | Stack Peak (B) | SRAM Margin | KEM Valid | Msg Valid | Status |\n")
@@ -369,7 +387,8 @@ def main():
     args = ap.parse_args()
 
     # 1. Generate unique directory for this experiment
-    exp_dir = generate_experiment_dir(tag=args.tag or args.alg)
+    # Mode goes into the folder name so simulated runs can never be mistaken for bench data.
+    exp_dir = generate_experiment_dir(tag=f"{args.mode}_{args.tag or args.alg}")
     print(f"\n{'='*75}")
     print(f">> [EXPERIMENT] Initialized isolated experiment workspace:")
     print(f">> Directory: {exp_dir}")
@@ -448,8 +467,11 @@ def main():
                 lat_ms = item["t_exec_ms"]
                 tot_ms = item.get("t_total_ms", lat_ms)
                 clk = combo["clock_mhz"]
+                # Derived from the host-side latency (not a cycle counter).
                 cycles = int(round(lat_ms * clk * 1000))
-                energy_uj = round(5.0 * 0.0102 * (lat_ms / 1000.0) * 1e6, 2)
+                # Energy is NOT measured until the shunt + battery are installed:
+                # it must come from parse.py (E = INT V*i dt over the scope CSV).
+                # Never fill it with a constant current here.
                 raw_records.append({
                     "run_order": len(raw_records) + 1,
                     "repetition": rep_counter[op_name],
@@ -466,12 +488,18 @@ def main():
                     "sram_total_b": item.get("sram_total", 6144),
                     "sram_headroom_pct": item.get("sram_headroom", round((6144 - item["stack_peak"]) / 6144 * 100.0, 2)),
                     "payload_bytes": item.get("payload_bytes", 0),
-                    "current_ma": 10.2,
-                    "energy_uj": energy_uj,
+                    "current_ma": None,
+                    "energy_uj": None,
                     "kem_validated": item.get("kem_validated"),
                     "msg_validated": item.get("msg_validated"),
-                    "status": item.get("status", "OK")
+                    "status": item.get("status", "OK"),
+                    "data_source": "bench",
+                    "latency_method": "host_serial_first_byte",
+                    "energy_method": "not_measured",
                 })
+
+    if not raw_records:
+        sys.exit("!! No observations collected; nothing to aggregate.")
 
     # 6. Write raw runs CSV
     raw_csv_path = os.path.join(exp_dir, "raw", "runs.csv")
