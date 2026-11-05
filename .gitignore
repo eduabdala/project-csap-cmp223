@@ -7,6 +7,9 @@ dist/
 diagrams/.cache/
 diagrams/out/
 
+data/processed/
+marp-ppt/
+
 # LaTeX (artefatos de compilação)
 *.aux
 *.log
@@ -22,7 +25,10 @@ diagrams/out/
 # Firmware build + analysis artifacts
 src/firmware/*/build/
 src/firmware/pqc/
+src/firmware/build/
+src/firmware/.dfp/
 src/firmware/atmega4809/.dfp/
+src/firmware/rp2040/.pico-sdk/
 src/analysis/data/
 __pycache__/
 *.pyc

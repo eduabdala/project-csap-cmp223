@@ -14,6 +14,7 @@ created: 2026-10-17
 - Definir variaveis do projeto
 - Ajustar de que forma o trabalho pode ser reprodutivo
 - Organizar Referencias
+- [x] Experimento 0: Caracterização baseline e reprodutibilidade (Jain DoE, semente aleatória, N=30, histogramas Freedman-Diaconis) — ver [docs/experiment-0.md](file:///home/eduabdala/git/project-cspa-cmp223/docs/experiment-0.md)
 
 ### Comprar
 - Resistor de precisão 1(r) ohm 1%

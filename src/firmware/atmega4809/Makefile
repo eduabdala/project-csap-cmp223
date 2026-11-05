@@ -56,7 +56,7 @@ else ifeq ($(ALG),ecdh)
   ADAPTER  := kem_ecdh.c
   SIZEDEFS := -DKEM_PUBLICKEYBYTES=64 -DKEM_SECRETKEYBYTES=64 \
               -DKEM_CIPHERTEXTBYTES=64 -DKEM_BYTES=32 \
-              $(if $(filter asm,$(VARIANT)),-DuECC_PLATFORM=uECC_avr -DuECC_OPTIMIZATION_LEVEL=3,-DuECC_PLATFORM=uECC_arch_other)
+              $(if $(filter asm,$(VARIANT)),-DuECC_PLATFORM=uECC_avr -DuECC_OPTIMIZATION_LEVEL=2,-DuECC_PLATFORM=uECC_arch_other)
 endif
 
 # Vendored source directory (shared between targets): ../pqc/<ALG>/<VARIANT>/
@@ -72,7 +72,8 @@ BUILD    := build
 TARGET   := firmware-$(ALG)-$(VARIANT)
 
 # ---- Flags --------------------------------------------------
-DFP_FLAGS := $(if $(wildcard .dfp/gcc/dev/$(MCU)),-B .dfp/gcc/dev/$(MCU) -I .dfp/include,)
+DFP_DIR   := $(firstword $(wildcard .dfp ../\.dfp))
+DFP_FLAGS := $(if $(DFP_DIR),-B $(DFP_DIR)/gcc/dev/$(MCU) -I $(DFP_DIR)/include,)
 CFLAGS   := -mmcu=$(MCU) $(DFP_FLAGS) -DF_CPU=$(F_CPU) -DBAUD_RATE=$(BAUD) $(SIZEDEFS) \
             $(OPT) -std=gnu11 -Wall -Wextra \
             -ffunction-sections -fdata-sections \

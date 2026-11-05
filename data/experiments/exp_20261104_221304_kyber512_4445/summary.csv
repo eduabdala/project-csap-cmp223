@@ -1,0 +1,9 @@
+algorithm,variant,optimization,clock_mhz,operation,sample_size,latency_ms_mean,latency_ms_std,latency_ms_ci95,latency_ms_median,latency_ms_iqr,energy_uj_mean,energy_uj_ci95,stack_peak_bytes
+kyber512,asm,-O3,20.0,decaps,1,317.86,0.0,0.0,317.86,0.0,16210.86,0.0,1019
+kyber512,asm,-O3,20.0,encaps,1,344.5,0.0,0.0,344.5,0.0,17569.5,0.0,1008
+kyber512,asm,-O3,20.0,keygen,1,262.51,0.0,0.0,262.51,0.0,13388.01,0.0,935
+kyber512,asm,-O3,20.0,msgcrypt,1,38.3,0.0,0.0,38.3,0.0,1953.3,0.0,68
+kyber512,ref,-O3,20.0,decaps,1,611.29,0.0,0.0,611.29,0.0,31175.79,0.0,985
+kyber512,ref,-O3,20.0,encaps,1,625.51,0.0,0.0,625.51,0.0,31901.01,0.0,974
+kyber512,ref,-O3,20.0,keygen,1,497.57,0.0,0.0,497.57,0.0,25376.07,0.0,899
+kyber512,ref,-O3,20.0,msgcrypt,1,38.4,0.0,0.0,38.4,0.0,1958.4,0.0,68

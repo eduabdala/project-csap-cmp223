@@ -42,24 +42,29 @@ def load_levels(config):
 def build_design(levels, kind="full", generator=None):
     """Return a list of dict rows mapping factor name -> chosen level label.
 
-    Uses pyDOE3 to produce the coded design (level indices), then decodes the
-    indices back to the string labels from the config.
+    Uses pyDOE3 if available; otherwise falls back to itertools.product for
+    full-factorial designs, ensuring portability outside Nix.
     """
-    try:
-        from pyDOE3 import fullfact, fracfact
-    except ImportError:
-        sys.exit("pyDOE3 not installed (enter the `nix develop` shell).")
-
     counts = [len(vals) for _, vals in levels]
 
     if kind == "full":
-        coded = fullfact(counts)          # rows of level indices (floats)
+        try:
+            from pyDOE3 import fullfact
+            coded = fullfact(counts)
+        except ImportError:
+            # Fallback to pure itertools Cartesian product
+            import itertools
+            indices_list = [range(c) for c in counts]
+            coded = list(itertools.product(*indices_list))
     elif kind == "fracfact":
         if not generator:
             sys.exit("fracfact requires 'fraction_generator' in the config.")
-        # fracfact handles 2-level factors; guard against multi-level here.
         if any(c != 2 for c in counts):
             sys.exit("fracfact only supports 2-level factors; use 'full'.")
+        try:
+            from pyDOE3 import fracfact
+        except ImportError:
+            sys.exit("pyDOE3 required for fractional factorial design.")
         coded = fracfact(generator)
         coded = (coded + 1) / 2           # map {-1,+1} -> {0,1} indices
     else:

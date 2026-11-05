@@ -20,7 +20,9 @@ Exemplos de uso:
 """
 import argparse
 import ctypes
+import datetime
 import fcntl
+import json
 import os
 import select
 import shutil
@@ -50,8 +52,11 @@ OP_NAMES = {
     "P": "Ping",
 }
 
-KEM_CIPHERTEXTBYTES = 768
-KEM_BYTES = 32
+ALG_PARAMS = {
+    "kyber512": {"ct_bytes": 768, "ss_bytes": 32, "pk_bytes": 800},
+    "ctru-light": {"ct_bytes": 512, "ss_bytes": 16, "pk_bytes": 640},
+    "ecdh": {"ct_bytes": 64, "ss_bytes": 32, "pk_bytes": 64},
+}
 
 
 def stream_xor(data: bytes, key: bytes) -> bytes:
@@ -410,6 +415,7 @@ def run_single_cmd(
     timeout: float,
     state: dict,
     msg_text: str,
+    alg: str = "kyber512",
 ) -> dict | None:
     termios.tcflush(fd, termios.TCIFLUSH)
     t0 = time.perf_counter()
@@ -422,7 +428,7 @@ def run_single_cmd(
                 "Aviso: nenhuma chave compartilhada em sessão; executando K -> E -> D automaticamente antes de M..."
             )
             for pre_cmd in ("K", "E", "D"):
-                res = run_single_cmd(fd, pre_cmd, port, baud, timeout, state, msg_text)
+                res = run_single_cmd(fd, pre_cmd, port, baud, timeout, state, msg_text, alg=alg)
                 if res is None:
                     return None
             key = state.get("ss_enc") or state.get("ss_dec")
@@ -511,17 +517,21 @@ def run_single_cmd(
         state.pop("ss_enc", None)  # novo par de chaves invalida a sessão anterior
         state.pop("ss_dec", None)
 
-    if cmd == "E" and len(payload) >= KEM_CIPHERTEXTBYTES + KEM_BYTES:
-        ct_bytes = payload[:KEM_CIPHERTEXTBYTES]
-        ss_enc = payload[KEM_CIPHERTEXTBYTES : KEM_CIPHERTEXTBYTES + KEM_BYTES]
+    alg_info = ALG_PARAMS.get(alg, ALG_PARAMS["kyber512"])
+    ct_len = alg_info["ct_bytes"]
+    ss_len = alg_info["ss_bytes"]
+
+    if cmd == "E" and len(payload) >= ct_len + ss_len:
+        ct_bytes = payload[:ct_len]
+        ss_enc = payload[ct_len : ct_len + ss_len]
         state["ss_enc"] = ss_enc
         print(f"Ciphertext (ct): {len(ct_bytes)} B ({ct_bytes[:16].hex()}...)")
         print(f"Segredo (Enc)  : {ss_enc.hex()}")
     elif cmd == "E":
         state.pop("ss_enc", None)
-        print(f"[ERRO] Payload do Encaps incompleto: {len(payload)} B (esperado {KEM_CIPHERTEXTBYTES + KEM_BYTES} B)",
+        print(f"[ERRO] Payload do Encaps incompleto: {len(payload)} B (esperado {ct_len + ss_len} B)",
               file=sys.stderr)
-    elif cmd == "D" and len(payload) == KEM_BYTES:
+    elif cmd == "D" and len(payload) == ss_len:
         state["ss_dec"] = payload
         print(f"Segredo (Dec)  : {payload.hex()}")
         if "ss_enc" in state:
@@ -549,14 +559,29 @@ def run_single_cmd(
     else:
         print(f"Status final   : [OK] Recebimento concluído para o comando {cmd}.")
 
+    kem_val = None
+    if cmd == "D" and len(payload) == ss_len and "ss_enc" in state:
+        kem_val = bool(state["ss_enc"] == payload)
+
+    msg_val = None
+    if cmd == "M":
+        dec_text = payload.decode("utf-8", errors="replace")
+        msg_val = bool(dec_text == msg_text)
+
     return {
+        "timestamp": datetime.datetime.now().isoformat(),
         "cmd": cmd,
         "op_name": op_name,
-        "t_exec_ms": t_exec * 1000.0,
-        "t_total_ms": t_total * 1000.0,
+        "ack": ack,
+        "t_exec_ms": round(t_exec * 1000.0, 3),
+        "t_total_ms": round(t_total * 1000.0, 3),
         "stack_peak": stack_peak,
-        "sram_headroom": sram_headroom,
+        "sram_total": sram_total,
+        "sram_headroom": round(sram_headroom, 2),
         "payload_bytes": len(payload),
+        "kem_validated": kem_val,
+        "msg_validated": msg_val,
+        "status": "OK" if (done_msg or buf) else "FAIL",
     }
 
 
@@ -612,7 +637,8 @@ def main() -> int:
         "--la-backend",
         choices=("sigrok", "libusb"),
         default="sigrok",
-        help="Backend de captura: sigrok (sigrok-cli, padrão) ou libusb (driver fx2lafw embutido)",
+        help="Backend de captura: sigrok (sigrok-cli, padrão) ou libusb (EXPERIMENTAL/quebrado: "
+             "não trata a re-enumeração 0925:3881 -> 1d50:608c após o upload do fx2lafw)",
     )
     parser.add_argument(
         "--la-driver",
@@ -636,6 +662,17 @@ def main() -> int:
         type=float,
         default=10.0,
         help="Timeout máximo de espera por operação em segundos (padrão: 10.0)",
+    )
+    parser.add_argument(
+        "--json-out",
+        default=None,
+        help="Caminho do arquivo JSON para salvar todos os dados brutos de cada operação.",
+    )
+    parser.add_argument(
+        "--alg",
+        choices=("kyber512", "ctru-light", "ecdh"),
+        default="kyber512",
+        help="Algoritmo alvo: kyber512, ctru-light ou ecdh (padrão: kyber512)",
     )
     args = parser.parse_args()
 
@@ -666,11 +703,16 @@ def main() -> int:
             print(f"[LA] Captura iniciada no Saleae Logic ({args.la_backend}) @ {args.la_rate // 1000} kHz...")
             time.sleep(0.05)
         else:
+            # Falha explícita: rodar a bateria sem captura deixaria um CSV antigo
+            # (ou nenhum) e daria a impressão de que os dados foram coletados.
             print(
-                "[LA] Aviso: não foi possível iniciar o analisador lógico USB (verifique conexão/permissão).",
+                "[LA] ERRO: não foi possível iniciar o analisador lógico. Bateria abortada.\n"
+                "     - sigrok-cli instalado?  sudo apt install sigrok-cli  (ou entre no `nix develop`)\n"
+                "     - analisador visível?    sigrok-cli --scan",
                 file=sys.stderr,
             )
-            la = None
+            os.close(fd)
+            return 4
 
     results: list[dict] = []
     state: dict = {}
@@ -683,7 +725,7 @@ def main() -> int:
                     print(
                         f"\n--- [Rodada {r_idx}/{args.repeat} | Passo {step_idx}/{total_steps}: {c} ({OP_NAMES[c]})] ---"
                     )
-                res = run_single_cmd(fd, c, args.port, args.baud, args.timeout, state, args.msg)
+                res = run_single_cmd(fd, c, args.port, args.baud, args.timeout, state, args.msg, alg=args.alg)
                 if res is None:
                     return 2
                 results.append(res)
@@ -729,6 +771,12 @@ def main() -> int:
                 label = f"{op_code} ({OP_NAMES[op_code]})"
                 print(f"{label:<14} {len(op_rows):>4} {mean_t:>12.2f} {min_t:>10.2f} {max_t:>10.2f} {max_pk:>9} B")
             print("=" * 72)
+
+        if args.json_out:
+            os.makedirs(os.path.dirname(os.path.abspath(args.json_out)), exist_ok=True)
+            with open(args.json_out, "w") as f_json:
+                json.dump(results, f_json, indent=2)
+            print(f"[DATA] Telemetria completa salva em: {args.json_out}")
 
         return 0
     finally:

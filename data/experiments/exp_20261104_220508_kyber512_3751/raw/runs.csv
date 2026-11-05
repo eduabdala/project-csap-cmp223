@@ -1,0 +1,9 @@
+run_order,repetition,algorithm,variant,optimization,clock_mhz,operation,latency_ms,cycles,stack_peak_b,current_ma,energy_uj,status
+1,1,kyber512,asm,-O3,20.0,keygen,261.3,5226000,935,10.2,13326.3,OK
+2,1,kyber512,asm,-O3,20.0,encaps,343.37,6867400,1008,10.2,17511.87,OK
+3,1,kyber512,asm,-O3,20.0,decaps,316.59,6331800,1019,10.2,16146.09,OK
+4,1,kyber512,asm,-O3,20.0,msgcrypt,38.36,767200,68,10.2,1956.36,OK
+5,1,kyber512,ref,-O3,20.0,keygen,484.93,9698600,899,10.2,24731.43,OK
+6,1,kyber512,ref,-O3,20.0,encaps,615.1,12302000,974,10.2,31370.1,OK
+7,1,kyber512,ref,-O3,20.0,decaps,597.14,11942800,985,10.2,30454.14,OK
+8,1,kyber512,ref,-O3,20.0,msgcrypt,38.35,767000,68,10.2,1955.85,OK

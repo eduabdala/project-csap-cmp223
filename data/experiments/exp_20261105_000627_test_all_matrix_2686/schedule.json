@@ -1,0 +1,770 @@
+[
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "ctru-light",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-Os",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "ecdh",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  }
+]
