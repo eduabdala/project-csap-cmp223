@@ -22,6 +22,7 @@ Porto Alegre, 2026
 
 - **Pergunta:** qual o limite de aplicabilidade de KEMs pós-quânticos num MCU de 8 bits?
 - **Objeto:** Kyber-512 (ML-KEM, FIPS 203) e CTRU-Light (KEM para nós sensores AVR, CHES 2026)
+- **Linha de base clássica:** ECDH secp256r1 (micro-ecc), empacotado como KEM
 - **Operações medidas:** KeyGen, Encaps e Decaps
 - **Métricas:** latência, pico de pilha, Flash ocupada e energia (pendente)
 - **Método:** medição em bancada, com projeto fatorial e análise por modelo linear
@@ -44,14 +45,15 @@ Porto Alegre, 2026
 
 | Fator | Níveis | Status |
 | :--- | :--- | :--- |
-| Algoritmo | Kyber-512, CTRU-Light, ECDH | ECDH sem dados de bancada |
+| Algoritmo | Kyber-512, CTRU-Light, ECDH | coletado |
 | Implementação | `ref`, `asm` | coletado |
 | Otimização | `-O3`, `-Os` | coletado |
 | Operação | KeyGen, Encaps, Decaps | coletado |
 | Clock | 20, 10, 5 MHz | só 20 MHz |
 
 - Matriz gerada por código (`design.py`, pyDOE3) a partir do `config.yaml`
-- 2000 observações de bancada, N de 10 a 165 por célula
+- 2160 observações de KEM em bancada (10 campanhas), N de 10 a 185 por célula
+- Última campanha (`_8196`): primeira com as **12 configurações**, 480 obs., 100% válidas
 
 ---
 
@@ -74,20 +76,35 @@ Porto Alegre, 2026
 
 ---
 
-## Resultados: latência, pilha e Flash (20 MHz)
+## Resultados: KEMs pós-quânticos (20 MHz)
 
 | Algoritmo | Impl. | Otim. | KeyGen (ms) | Encaps (ms) | Decaps (ms) | Pilha (B) | Flash (KB) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| Kyber-512 | asm | -O3 | 261,7 ± 0,3 | 343,6 ± 0,2 | 317,0 ± 0,2 | 1.019 | 25,6 |
-| Kyber-512 | asm | -Os | 274,1 ± 0,4 | 362,3 ± 0,5 | 334,2 ± 0,4 | 997 | 15,1 |
-| Kyber-512 | ref | -O3 | 498,3 ± 0,5 | 629,0 ± 0,5 | 621,0 ± 0,5 | 976 | 46,1 |
-| Kyber-512 | ref | -Os | 508,9 ± 0,8 | 642,2 ± 0,9 | 635,1 ± 0,8 | 939 | 35,6 |
-| CTRU-Light | asm | -O3 | 91,0 ± 1,6 | 91,4 ± 1,4 | 151,1 ± 0,1 | 3.177 | 28,1 |
-| CTRU-Light | asm | -Os | 93,4 ± 1,7 | 93,9 ± 1,5 | 156,5 ± 0,4 | 3.137 | 22,6 |
-| CTRU-Light | ref | -O3 | 194,7 ± 3,7 | 140,0 ± 3,1 | 272,8 ± 0,2 | 3.049 | 46,0 |
-| CTRU-Light | ref | -Os | 199,9 ± 4,1 | 145,3 ± 3,5 | 284,0 ± 0,2 | 3.009 | 40,0 |
+| Kyber-512 | asm | -O3 | 261,8 ± 0,3 | 343,7 ± 0,2 | 317,0 ± 0,2 | 1.019 | 25,6 |
+| Kyber-512 | asm | -Os | 274,1 ± 0,3 | 362,2 ± 0,4 | 334,1 ± 0,3 | 997 | 15,1 |
+| Kyber-512 | ref | -O3 | 498,4 ± 0,5 | 629,1 ± 0,5 | 621,1 ± 0,5 | 976 | 46,1 |
+| Kyber-512 | ref | -Os | 508,7 ± 0,6 | 642,0 ± 0,6 | 635,0 ± 0,6 | 939 | 35,6 |
+| CTRU-Light | asm | -O3 | 91,2 ± 1,3 | 91,3 ± 1,1 | 151,1 ± 0,1 | 3.177 | 28,1 |
+| CTRU-Light | asm | -Os | 93,6 ± 1,4 | 93,8 ± 1,2 | 156,7 ± 0,6 | 3.137 | 22,6 |
+| CTRU-Light | ref | -O3 | 194,6 ± 1,9 | 139,9 ± 1,5 | 272,8 ± 0,1 | 3.049 | 46,0 |
+| CTRU-Light | ref | -Os | 199,9 ± 2,0 | 145,2 ± 1,7 | 284,1 ± 0,1 | 3.009 | 40,0 |
 
 Média ± IC 95% (t de Student). Flash total: 48 KB. SRAM total: 6 KB.
+
+---
+
+## Resultados: ECDH, a linha de base clássica
+
+| Algoritmo | Impl. | Otim. | KeyGen (ms) | Encaps (ms) | Decaps (ms) | Pilha (B) | Flash (KB) |
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| ECDH | asm | -O3 | 3.273,2 ± 0,5 | 6.529,8 ± 1,0 | 3.280,2 ± 0,6 | 826 | 14,5 |
+| ECDH | asm | -Os | 3.292,0 ± 0,5 | 6.566,3 ± 1,0 | 3.299,7 ± 0,6 | 698 | 9,4 |
+| ECDH | ref | -O3 | 6.981,7 ± 1,1 | 13.947,3 ± 1,3 | 6.989,0 ± 1,2 | 893 | 37,8 |
+| ECDH | ref | -Os | 7.440,6 ± 0,7 | 14.864,4 ± 1,6 | 7.448,1 ± 1,3 | 732 | 10,5 |
+
+- **O ECDH é 10–23× mais lento que o Kyber-512 e 21–102× mais lento que o CTRU-Light**
+- O Encaps do ECDH faz duas operações de curva (par efêmero + segredo), por isso é ~2× o KeyGen
+- Em troca, usa menos pilha (≤ 0,9 KB) e menos Flash (9,4 KB em asm -Os)
 
 ---
 
@@ -95,24 +112,24 @@ Média ± IC 95% (t de Student). Flash total: 48 KB. SRAM total: 6 KB.
 
 ![w:900](../artigo/figures/latency.png)
 
-CTRU-Light < Kyber-512 sempre · `ref` ≈ 2× `asm` · `-Os` ≈ `-O3`
+Escala log · CTRU-Light < Kyber-512 ≪ ECDH sempre · `ref` ≈ 2× `asm` · `-Os` ≈ `-O3`
 
 ---
 
 ## Modelo linear: quem explica a latência? (MODEL / STAT)
 
-`log T ~ algoritmo × implementação × otimização × operação` (ANOVA tipo II, R² > 0,99)
+`log T ~ algoritmo × implementação × otimização × operação` (ANOVA tipo II, R² > 0,999)
 
-| Termo | η² |
-| :--- | ---: |
-| Algoritmo | 57,8% |
-| Implementação | 34,0% |
-| Operação | 4,5% |
-| Algoritmo × Operação | 3,2% |
-| Otimização | < 0,1% |
+| Termo | η² (com ECDH) | η² (só PQC) |
+| :--- | ---: | ---: |
+| Algoritmo | 86,7% | 63,1% |
+| Implementação | 9,9% | 28,8% |
+| Algoritmo × Operação | 2,0% | |
+| Operação | 1,2% | 3,9% |
+| Otimização | < 0,1% | < 0,1% |
 
 Comparações par a par (Welch sobre log T, todas com p < 0,05):
-**asm** é 1,5–2,1× mais rápido · **-Os** é 2–5% mais lento · **CTRU-Light** é 2,1–4,5× mais rápido
+**asm** é 1,5–2,3× mais rápido · **-Os** é 0,6–7% mais lento · **CTRU-Light** é 2,1–4,5× mais rápido que o Kyber
 
 ---
 
@@ -121,15 +138,15 @@ Comparações par a par (Welch sobre log T, todas com p < 0,05):
 <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:28px;align-items:center">
 <div>
 
-![w:560](../artigo/figures/tradeoff.png)
+![w:580](../artigo/figures/tradeoff.png)
 
 </div>
 <div>
 
-- O CTRU-Light troca memória por tempo: ~3× mais pilha
-- SRAM livre: 48–62% (CTRU-Light) contra 84–86% (Kyber)
+- **PQC custa memória, não tempo**
+- SRAM livre: 86–90% (ECDH), 83–86% (Kyber), 48–62% (CTRU-Light)
 - Kyber `ref -O3` ocupa 46 KB dos 48 KB de Flash
-- **`asm` + `-Os` cai para 15 KB**
+- **`asm` + `-Os` cai para 15 KB** (ECDH: 9,4 KB)
 
 </div>
 </div>
@@ -150,11 +167,12 @@ Comparações par a par (Welch sobre log T, todas com p < 0,05):
 ## Pontos em aberto e próximos passos
 
 - **Bimodalidade** no KeyGen/Encaps do CTRU-Light (CV de 3–6%): possivelmente amostragem com rejeição, a verificar
-- **Overhead serial** na latência: o `msgcrypt` (XOR simples) já leva ~38 ms, então os valores absolutos estão inflados
+- **Por que o ECDH é tão lento?** Hipótese: multiplicador de 8×8 bits torna cara a aritmética de 256 bits. A verificar com perfilamento
+- **Overhead serial** na latência: o `msgcrypt` (XOR simples) já leva ~38 ms, então os valores absolutos dos KEMs estão inflados
 - Medir a latência pelo pulso GPIO no analisador lógico
 - Instalar shunt + bateria e medir a energia por operação
-- Coletar 10 e 5 MHz e o ECDH na bancada
-- Balancear as células (N = 30) e aplicar a ordem aleatória
+- Coletar 10 e 5 MHz na bancada
+- Balancear as células (N = 30, sobretudo ECDH e CTRU-Light `ref`) e aplicar a ordem aleatória
 
 ---
 

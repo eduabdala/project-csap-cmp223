@@ -27,3 +27,5 @@ exp_20261105_000725_complete_simulation_matrix_1075,sim,1440,0,True
 exp_20261105_000803_complete_simulation_matrix_4370,empty,0,0,False
 exp_20261105_001049_complete_simulation_matrix_7223,bench,720,6,False
 exp_20261105_072304_full_pqc_campaign_7266,bench,320,8,False
+exp_20261105_185346_bench_full_pqc_campaign_9755,bench,400,10,True
+exp_20261105_191552_bench_full_pqc_campaign_8196,bench,480,12,True
