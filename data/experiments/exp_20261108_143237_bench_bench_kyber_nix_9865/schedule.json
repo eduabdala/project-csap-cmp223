@@ -1,0 +1,322 @@
+[
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "ref",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 4
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "decaps",
+    "rep": 5
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 1
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "msgcrypt",
+    "rep": 3
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "keygen",
+    "rep": 2
+  },
+  {
+    "alg": "kyber512",
+    "variant": "asm",
+    "opt": "-O3",
+    "clock_mhz": 20.0,
+    "op": "encaps",
+    "rep": 3
+  }
+]

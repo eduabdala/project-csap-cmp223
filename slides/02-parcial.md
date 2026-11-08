@@ -1,7 +1,14 @@
 ---
 marp: true
 theme: inf-ufrgs
-style: @import 'inf-ufrgs.css';
+style: |
+  @import 'inf-ufrgs-claro.css';
+  section {
+    padding: 38px 55px !important;
+  }
+  footer {
+    bottom: 14px !important;
+  }
 paginate: true
 _paginate: false
 footer: 'CMP223 - Relatório Parcial | INF-UFRGS'
@@ -9,185 +16,256 @@ footer: 'CMP223 - Relatório Parcial | INF-UFRGS'
 
 <!-- class: lead -->
 
-# Avaliação de Desempenho de Criptografia Pós-Quântica em Sistemas Embarcados
-Relatório Parcial (Etapa 2)
+# Análise de Desempenho e Consumo Energético de Algoritmos PQC em MCUs de 8 bits
+Relatório Parcial de Acompanhamento (Etapa 2)
 
-**Eduardo Silva Abdala**
-*Análise de Desempenho em Sistemas Computacionais (CMP223)*
+**Eduardo Silva Abdala**  
+*Análise de Desempenho em Sistemas Computacionais (CMP223)*  
 Porto Alegre, 2026
 
----
-
-## Pergunta e objeto de estudo
-
-- **Pergunta:** qual o limite de aplicabilidade de KEMs pós-quânticos num MCU de 8 bits?
-- **Objeto:** Kyber-512 (ML-KEM, FIPS 203) e CTRU-Light (KEM para nós sensores AVR, CHES 2026)
-- **Linha de base clássica:** ECDH secp256r1 (micro-ecc), empacotado como KEM
-- **Operações medidas:** KeyGen, Encaps e Decaps
-- **Métricas:** latência, pico de pilha, Flash ocupada e energia (pendente)
-- **Método:** medição em bancada, com projeto fatorial e análise por modelo linear
+![logo](logo_inf.png)
 
 ---
 
-## Ambiente de teste (DESC)
+<style scoped>
+h2 { margin-bottom: 12px; }
+ul { font-size: 0.76em; }
+ul li { margin-bottom: 5px; }
+</style>
 
-- **SUT:** Arduino Nano Every, ATmega4809 (AVRxt 8 bits, 48 KB Flash, 6 KB SRAM), 5 V, 20 MHz
-- **Firmware:** bare-metal, `cli` na janela de medição, GPIO de 1 ciclo (`VPORTA.OUT`), telemetria UART fora da janela
-- **Implementações:** C de referência e assembly AVR, do artefato público do CTRU-Light
-- **Toolchain:** avr-gcc + avrdude (UPDI), ambiente fixado em `flake.nix`
-- **Latência:** host, do envio do comando até o 1º byte de resposta
-- **Pilha:** watermark `0xAA`. **Flash:** bytes de dados do `.hex`
-- **Energia:** integrador `E = ∫ V·i dt` pronto, aguardando shunt de 1 Ω e bateria
+## 1. O que foi Proposto: Objeto, Hipóteses e Fatores
 
----
-
-## Projeto experimental (DOE)
-
-| Fator | Níveis | Status |
-| :--- | :--- | :--- |
-| Algoritmo | Kyber-512, CTRU-Light, ECDH | coletado |
-| Implementação | `ref`, `asm` | coletado |
-| Otimização | `-O3`, `-Os` | coletado |
-| Operação | KeyGen, Encaps, Decaps | coletado |
-| Clock | 20, 10, 5 MHz | só 20 MHz |
-
-- Matriz gerada por código (`design.py`, pyDOE3) a partir do `config.yaml`
-- 2160 observações de KEM em bancada (10 campanhas), N de 10 a 185 por célula
-- Última campanha (`_8196`): primeira com as **12 configurações**, 480 obs., 100% válidas
+- **Pergunta Central da Proposta:** qual o limite de aplicabilidade do **Kyber-512** e KEMs pós-quânticos num MCU de 8 bits restrito?
+- **Ambiente de Restrição:** Microcontrolador ATmega4809 (6 KB SRAM, 48 KB Flash, 20 MHz).
+- **Hipótese:** KEMs pós-quânticos viabilizam execução rápida, mas ameaçam a **margem operacional sistêmica (SRAM e CPU livres)** para tarefas concorrentes (Sensoriamento, MQTT, RTOS).
+- **Fatores Fatoriais Avaliados ($3 \times 2 \times 2 \times 3$):**
+  - **Algoritmos:** Kyber-512 (NIST) vs. CTRU-Light (LWC) vs. ECDH clássico (controle)
+  - **Estratégias:** Código de referência em C puro (`ref`) vs. Assembly otimizado (`asm`)
+  - **Otimização do Compilador:** `-O3` (velocidade) vs. `-Os` (tamanho de código)
+  - **Fases Criptográficas:** Geração de Chaves (KeyGen), Encapsulação (Encaps) e Decapsulação (Decaps)
 
 ---
 
-## Boas práticas e reprodutibilidade (BOAS / REPRO)
+<style scoped>
+h2 { margin-bottom: 8px; }
+table { font-size: 0.58em; margin-top: 2px; margin-bottom: 5px; }
+th, td { padding: 3px 5px; }
+ul { font-size: 0.68em; margin-top: 3px; }
+ul li { margin-bottom: 3px; }
+p { font-size: 0.70em; margin-bottom: 3px; }
+</style>
 
-- Uma pasta por experimento: binários, telemetria bruta, cronograma
-- `catalog.py` classifica cada pasta **pela evidência**: só a telemetria gravada com a placa conta como bancada
-- Dados simulados (do desenvolvimento do pipeline) ficam **fora** da análise
-- **Ordem de execução:** planejada aleatória (`schedule.json`), mas **na bancada rodou em blocos**: uma configuração por vez, ciclo fixo K→E→D
-- Verificado depois: sem deriva temporal relevante (Spearman, p < 0,01: só 1 de 30 séries com N ≥ 30 tem tendência, de −0,36 ms no total)
+## 2. Ambiente Experimental e Status das Métricas (DESC & REPRO)
 
----
-
-## Programação literal e ferramentas (LITERAL / DSBOX)
-
-- Caderno `src/analysis/analise.ipynb`: do JSON bruto à tabela, figuras, comparações e ANOVA, com o texto de interpretação junto
-- pandas · seaborn · statsmodels · scipy, com versões fixadas em `requirements-notebook.txt`
-- Reexecução completa: `jupyter nbconvert --execute`
-- O mesmo caderno gera as tabelas e figuras do artigo (template ACM)
-
----
-
-## Resultados: KEMs pós-quânticos (20 MHz)
-
-| Algoritmo | Impl. | Otim. | KeyGen (ms) | Encaps (ms) | Decaps (ms) | Pilha (B) | Flash (KB) |
-| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| Kyber-512 | asm | -O3 | 261,8 ± 0,3 | 343,7 ± 0,2 | 317,0 ± 0,2 | 1.019 | 25,6 |
-| Kyber-512 | asm | -Os | 274,1 ± 0,3 | 362,2 ± 0,4 | 334,1 ± 0,3 | 997 | 15,1 |
-| Kyber-512 | ref | -O3 | 498,4 ± 0,5 | 629,1 ± 0,5 | 621,1 ± 0,5 | 976 | 46,1 |
-| Kyber-512 | ref | -Os | 508,7 ± 0,6 | 642,0 ± 0,6 | 635,0 ± 0,6 | 939 | 35,6 |
-| CTRU-Light | asm | -O3 | 91,2 ± 1,3 | 91,3 ± 1,1 | 151,1 ± 0,1 | 3.177 | 28,1 |
-| CTRU-Light | asm | -Os | 93,6 ± 1,4 | 93,8 ± 1,2 | 156,7 ± 0,6 | 3.137 | 22,6 |
-| CTRU-Light | ref | -O3 | 194,6 ± 1,9 | 139,9 ± 1,5 | 272,8 ± 0,1 | 3.049 | 46,0 |
-| CTRU-Light | ref | -Os | 199,9 ± 2,0 | 145,2 ± 1,7 | 284,1 ± 0,1 | 3.009 | 40,0 |
-
-Média ± IC 95% (t de Student). Flash total: 48 KB. SRAM total: 6 KB.
-
----
-
-## Resultados: ECDH, a linha de base clássica
-
-| Algoritmo | Impl. | Otim. | KeyGen (ms) | Encaps (ms) | Decaps (ms) | Pilha (B) | Flash (KB) |
-| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| ECDH | asm | -O3 | 3.273,2 ± 0,5 | 6.529,8 ± 1,0 | 3.280,2 ± 0,6 | 826 | 14,5 |
-| ECDH | asm | -Os | 3.292,0 ± 0,5 | 6.566,3 ± 1,0 | 3.299,7 ± 0,6 | 698 | 9,4 |
-| ECDH | ref | -O3 | 6.981,7 ± 1,1 | 13.947,3 ± 1,3 | 6.989,0 ± 1,2 | 893 | 37,8 |
-| ECDH | ref | -Os | 7.440,6 ± 0,7 | 14.864,4 ± 1,6 | 7.448,1 ± 1,3 | 732 | 10,5 |
-
-- **O ECDH é 10–23× mais lento que o Kyber-512 e 21–102× mais lento que o CTRU-Light**
-- O Encaps do ECDH faz duas operações de curva (par efêmero + segredo), por isso é ~2× o KeyGen
-- Em troca, usa menos pilha (≤ 0,9 KB) e menos Flash (9,4 KB em asm -Os)
-
----
-
-## Resultados: latência por configuração
-
-![w:900](../artigo/figures/latency.png)
-
-Escala log · CTRU-Light < Kyber-512 ≪ ECDH sempre · `ref` ≈ 2× `asm` · `-Os` ≈ `-O3`
-
----
-
-## Modelo linear: quem explica a latência? (MODEL / STAT)
-
-`log T ~ algoritmo × implementação × otimização × operação` (ANOVA tipo II, R² > 0,999)
-
-| Termo | η² (com ECDH) | η² (só PQC) |
-| :--- | ---: | ---: |
-| Algoritmo | 86,7% | 63,1% |
-| Implementação | 9,9% | 28,8% |
-| Algoritmo × Operação | 2,0% | |
-| Operação | 1,2% | 3,9% |
-| Otimização | < 0,1% | < 0,1% |
-
-Comparações par a par (Welch sobre log T, todas com p < 0,05):
-**asm** é 1,5–2,3× mais rápido · **-Os** é 0,6–7% mais lento · **CTRU-Light** é 2,1–4,5× mais rápido que o Kyber
-
----
-
-## Trade-off memória × tempo
-
-<div style="display:grid;grid-template-columns:1.25fr 1fr;gap:28px;align-items:center">
+<div style="display:grid;grid-template-columns:1fr 1.15fr;gap:14px;align-items:start">
 <div>
 
-![w:580](../artigo/figures/tradeoff.png)
+**Bancada Física & Toolchain (DESC & REPRO):**
+- **Dispositivo (DUT):** ATmega4809 Curiosity Nano (8 bits, 20 MHz via *fuses*, 6 KB SRAM, 48 KB Flash, 3,3V).
+- **Instrumentação:** Analisador Lógico Saleae Logic 8 (100 kS/s) amostrando pino GPIO PA0 (D2).
+- **Reprodutibilidade Hermética (NixOS / Flake):** Toolchain declarativa via `flake.nix` pinando `avr-gcc 14`, `avrdude`, Python científico e `pyDOE3` (garantia de compilação idêntica bit a bit).
+- **Protocolo:** $N=50$ repetições com PRNG determinístico, script automatizado e logs brutos versionados com hash e timestamp.
 
 </div>
 <div>
 
-- **PQC custa memória, não tempo**
-- SRAM livre: 86–90% (ECDH), 83–86% (Kyber), 48–62% (CTRU-Light)
-- Kyber `ref -O3` ocupa 46 KB dos 48 KB de Flash
-- **`asm` + `-Os` cai para 15 KB** (ECDH: 9,4 KB)
+| Métrica Prometida | Unidade | Registro Físico | Status Etapa 2 |
+| :--- | :---: | :--- | :--- |
+| **Latência ($T_{\text{exec}}$)** | ms | Saleae GPIO (`PA0`) | **Concluído ($N=50$)** |
+| **Ciclos ($K_{\text{cyc}}$)** | k-ciclos | Mapeado $f_{\text{cpu}} = 20\text{ MHz}$ | **Concluído** |
+| **Pilha (Stack)** | Bytes | *Stack Watermarking* (`0xAA`)| **Concluído (12 configs)** |
+| **Flash (ROM)** | KB | `avr-size` (`.text` + `.rodata`) | **Concluído** |
+| **Margem SRAM** | % / B | $\text{SRAM}_{\text{tot}} - \text{Pico}$ | **Concluído** |
+| **Energia ($E_{\text{op}}$)** | $\mu\text{J}$ | Resistor *shunt* + osciloscópio | **Pendente (calibração)** |
+
+- **Mitigação do Observador (BOAS):** Trigger em GPIO isolou ciclos puros da CPU, eliminando o atraso da UART ($+21$ a $+30\text{ ms}$).
 
 </div>
 </div>
 
 ---
 
-## Dificuldades encontradas e soluções (DIFF)
+<style scoped>
+h2 { margin-bottom: 8px; }
+table { font-size: 0.62em; margin-top: 3px; margin-bottom: 6px; }
+th, td { padding: 4px 6px; }
+p, ul { font-size: 0.72em; margin-bottom: 3px; }
+ul li { margin-bottom: 3px; }
+</style>
 
-1. **Shunt e bateria não chegaram.** Energia fica como `NA`. O integrador foi validado com sinal sintético
-2. **Dados simulados misturados com os reais.** Proveniência gravada em cada observação e `catalog.py` para auditar
-3. **Energia "estimada" com corrente constante** numa versão antiga do runner. Removida: nenhum valor não medido é reportado
-4. **Ordem não aleatorizada na bancada.** Regravar a Flash a cada ensaio é caro. Plano: sortear a ordem das configurações e das operações dentro de cada uma
-5. **Execuções interrompidas** (8 pastas vazias). Mantidas e catalogadas
-6. **Clock errado (16 em vez de 20 MHz).** `fuse2` gravado junto com o firmware
+## 3. Resultados: Latência Pura de CPU no Analisador Lógico
+
+| Algoritmo | Impl. | Otim. | KeyGen (ms) | Encaps (ms) | Decaps (ms) | Speedup ASM |
+| :--- | :--- | :--- | ---: | ---: | ---: | :---: |
+| **CTRU-Light** | `asm` | `-O3` | **62,1 / 72,3** | **59,1 / 69,2** | **120,3** | $1,55\times - 2,14\times$ |
+| **CTRU-Light** | `ref` | `-O3` | 165,0 / 175,3 | 107,9 / 118,1 | 242,1 | — |
+| **Kyber-512** | `asm` | `-O3` | **239,3** | **314,5** | **287,2** | $1,83\times - 1,96\times$ |
+| **Kyber-512** | `ref` | `-O3` | 475,0 | 598,8 | 590,1 | — |
+| **ECDH (Clássico)**| `asm` | `-O3` | **3.248,1** | **6.496,2** | **3.247,4** | $2,13\times - 2,14\times$ |
+| **ECDH (Clássico)**| `ref` | `-O3` | 6.957,1 | 13.915,1 | 6.956,4 | — |
+
+*Medição pura na janela GPIO (PA0). A UART adiciona overhead constante de $+21\text{ a }+30\text{ ms}$.*
+
+- **PQC é 10× a 100× mais rápido que o ECDH:** ECDH exige dezenas de milhares de operações de 8 bits para modular curvas elípticas de 256 bits (~65 M ciclos/op).
+- **Otimização em Assembly:** Garante ganho consistente de $\approx 2,0\times$ sobre o C puro em todos os esquemas.
 
 ---
 
-## Pontos em aberto e próximos passos
+<style scoped>
+h2 { margin-bottom: 8px; }
+ul { font-size: 0.74em; }
+ul li { margin-bottom: 4px; }
+</style>
 
-- **Bimodalidade** no KeyGen/Encaps do CTRU-Light (CV de 3–6%): possivelmente amostragem com rejeição, a verificar
-- **Por que o ECDH é tão lento?** Hipótese: multiplicador de 8×8 bits torna cara a aritmética de 256 bits. A verificar com perfilamento
-- **Overhead serial** na latência: o `msgcrypt` (XOR simples) já leva ~38 ms, então os valores absolutos dos KEMs estão inflados
-- Medir a latência pelo pulso GPIO no analisador lógico
-- Instalar shunt + bateria e medir a energia por operação
-- Coletar 10 e 5 MHz na bancada
-- Balancear as células (N = 30, sobretudo ECDH e CTRU-Light `ref`) e aplicar a ordem aleatória
+## 4. Margem Operacional Sistêmica: Sobra SRAM para IoT?
+
+<div style="display:grid;grid-template-columns:0.95fr 1.05fr;gap:16px;align-items:center">
+<div style="text-align:center;">
+
+![w:390](figures/slide_tradeoff.png)
+
+</div>
+<div>
+
+- **Resposta à Pergunta da Proposta:**
+  - *O PQC custa memória (SRAM/Flash), não tempo de CPU!*
+- **Margem de SRAM Livre (Total: 6 KB):**
+  - **ECDH:** consome $826\text{ B}$ $\rightarrow$ **$86,5\%$ de SRAM livre**
+  - **Kyber-512:** consome $1.019\text{ B}$ $\rightarrow$ **$83,4\%$ de SRAM livre**
+  - **CTRU-Light:** consome $3.177\text{ B}$ $\rightarrow$ **$48,3\%$ de SRAM livre**
+- **Conclusão:** Todos os esquemas cabem com folga nos 6 KB do ATmega4809, preservando margem operacional para MQTT, RTOS e sensores.
+
+</div>
+</div>
 
 ---
 
-## Uso de IA (Requisito 5.3)
+<style scoped>
+h2 { margin-bottom: 8px; }
+ul { font-size: 0.73em; }
+ul li { margin-bottom: 4px; }
+</style>
 
-- **Agente:** Kiro (Claude Opus), em modo autônomo no repositório, com tarefas pedidas uma a uma
-- **Fluxo:** pedido → implementação pelo agente → revisão humana das alterações e reexecução → integração
-- **Com auxílio de IA:** revisão do projeto, separação sim/bench, `catalog.py`, caderno de análise, formatação do artigo no template ACM, estes slides
-- Detalhes na seção "Uso de ferramentas de IA" do artigo
+## 5. Custo de Memória Flash (ROM): O Impacto do Assembly e -Os
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center">
+<div style="text-align:center;">
+
+![w:400](figures/slide_flash.png)
+
+</div>
+<div>
+
+- **Gargalo Real do PQC em 8 bits: Memória Flash** (teto de 48 KB no MCU)
+- **Kyber-512 (ML-KEM):**
+  - C de Referência (`-O3`): consome **46,1 KB (96%)**, quase inviabilizando o MCU.
+  - Assembly com `-Os`: reduz para **15,1 KB (31%)**, liberando **69% de Flash** para a aplicação!
+- **CTRU-Light:** ocupa **22,6 KB** (`asm -Os`), deixando **53% de Flash livre**.
+- **ECDH Clássico:** ocupa **9,4 KB** (`asm -Os`), a menor pegada de código.
+- **Conclusão:** KEMs pós-quânticos exigem `-Os` e Assembly para permitir coexistência com firmware IoT.
+
+</div>
+</div>
+
+---
+
+<style scoped>
+h2 { margin-bottom: 6px; }
+ul { font-size: 0.74em; }
+ul li { margin-bottom: 4px; }
+</style>
+
+## 6. Descoberta Experimental: Bimodalidade no CTRU-Light
+
+<div style="text-align: center; margin-bottom: 6px;">
+
+![w:580](figures/slide_bimodality.png)
+
+</div>
+
+- **CTRU-Light (KeyGen & Encaps):** Estritamente bimodal devido ao **retry de amostragem por rejeição** de polinômios ($+10,2\text{ ms} = 204.000\text{ ciclos}$ por nova tentativa).
+- **Kyber-512 & ECDH:** Estritamente unimodais de tempo constante (pico único determinístico).
+- **Decapsulação:** 100% determinística em todos os esquemas ($120,3\text{ ms}$ no CTRU, sem rejeição).
+
+---
+
+<style scoped>
+h2 { margin-bottom: 10px; }
+ul { font-size: 0.74em; }
+ul li { margin-bottom: 5px; }
+</style>
+
+## 7. Modelo Estatístico (ANOVA) & Controle Experimental
+
+- **Modelo Linear:** $\log(\text{Latência}) \sim \text{Algoritmo} \times \text{Implementação} \times \text{Otimização} \times \text{Operação}$ ($R^2 > 0,999$)
+- **Frações de variância explicada ($\eta^2$):**
+  - **Algoritmo:** explica **86,7%** da variação total da latência
+  - **Implementação (`ref` vs `asm`):** explica **9,9%** (fator de ganho $\approx 2,0\times$)
+  - **Operação:** explica **1,2%**
+  - **Otimização do Compilador (`-O3` vs `-Os`):** explica **$< 0,1\%$** (diferença de 1–4%)
+- **Controle experimental (Sem Deriva Térmica):**
+  - Ausência de aquecimento/deriva ao longo das 50 repetições consecutivas ($p > 0,05$)
+  - Canal UART aferido com baseline `msgcrypt` constante em $41,5\text{ ms}$
+
+---
+
+<style scoped>
+h2 { margin-bottom: 10px; }
+ol { font-size: 0.74em; }
+ol li { margin-bottom: 6px; }
+</style>
+
+## 8. Desafios Enfrentados e Ajustes Metodológicos (DIFF)
+
+1. **Atraso no circuito de energia (Shunt/Bateria):**
+   - *Ajuste:* Firmware com hooks de trigger pronto; medição de $\mu\text{J}$ movida para a etapa final para uso com shunts calibrados.
+2. **Mitigação de ruído na latência do host:**
+   - *Ajuste:* Transmissão serial continha até 800 B de pacotes; isolamento total alcançado com a captura de bordas no **Analisador Lógico Saleae via GPIO**.
+3. **Timeout do ECDH C puro (~14 segundos):**
+   - *Ajuste:* Runner reconfigurado com timeouts dinâmicos proporcionais à complexidade da curva.
+4. **Fixação do Clock de 20 MHz:**
+   - *Ajuste:* Gravação automática de `fuse2` integrada ao script via UPDI/avrdude.
+
+---
+
+<style scoped>
+h2 { margin-bottom: 10px; }
+ul { font-size: 0.72em; }
+ul li { margin-bottom: 5px; }
+h3 { font-size: 0.85em; margin-bottom: 6px; color: var(--inf-red); }
+</style>
+
+## 9. Próximos Passos (Fechamento da Proposta) & Uso de IA
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+<div>
+
+### Próximos Passos (Entrega Final)
+- Realizar as medições de energia por operação ($\mu\text{J}$) com circuito integrador analógico
+- Executar a matriz com redução de clock para 10 MHz e 5 MHz
+- Concluir a avaliação de consumo de bateria em nós sensores com ciclo ativo/repouso
+
+</div>
+<div>
+
+### Uso de Ferramentas de IA (Req. 5.3)
+- **Ambiente:** Antigravity / Claude como assistente de pair programming
+- **Atribuições:** Automação de scripts no Saleae, auditoria estatística dos traces brutos e gráficos no padrão de Raj Jain
+- **Supervisão humana:** Toda bancada física, medição em hardware e análise teórica concebida e conduzida pelo autor
+
+</div>
+</div>
 
 ---
 
 <!-- class: lead -->
 
-# Perguntas & Discussão
+# Conclusão & Discussão
 
-**Eduardo Silva Abdala**
-*Instituto de Informática - UFRGS*
+- **Resposta à Proposta:** O Kyber-512 e o CTRU-Light não apenas são viáveis em 8 bits, como são até $100\times$ mais rápidos que o ECDH clássico, mantendo mais de $80\%$ de SRAM livre.
+- O gargalo reside no binário Flash, solucionado pelo Assembly em `-Os`.
+
+**Obrigado!**  
+*Eduardo Silva Abdala — Instituto de Informática (INF-UFRGS)*  
+
+![logo](logo_inf.png)

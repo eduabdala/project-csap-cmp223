@@ -1,225 +1,228 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import seaborn as sns
+#!/usr/bin/env python3
+"""
+Geração de figuras do artigo utilizando plotnine (implementação do ggplot2 para Python).
+Mantém compatibilidade total com o pipeline do repositório.
+"""
+
 from pathlib import Path
+import pandas as pd
+import plotnine as p9
+import matplotlib.pyplot as plt
 
-OUT = Path("/home/eduabdala/git/project-cspa-cmp223/artigo/figures")
-DATA = Path("/home/eduabdala/git/project-cspa-cmp223/data/processed")
+OUT = Path(__file__).resolve().parent.parent.parent / "artigo" / "figures"
+DATA = Path(__file__).resolve().parent.parent.parent / "data" / "processed"
 
-sns.set_theme(style="ticks", context="paper")
-TEXTW = 395.8225 / 72.27  # ~5.48 in
+OUT.mkdir(parents=True, exist_ok=True)
 
-plt.rcParams.update({
-    "font.family": "serif",
-    "font.serif": ["Linux Libertine", "Libertinus Serif", "DejaVu Serif"],
-    "font.size": 8,
-    "axes.labelsize": 8,
-    "axes.titlesize": 8,
-    "legend.fontsize": 7,
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
-    "axes.linewidth": 0.6,
-    "grid.linewidth": 0.4,
-    "lines.linewidth": 1.0,
-    "axes.grid": True,
-    "grid.alpha": 0.4,
-    "savefig.bbox": "tight",
-    "savefig.pad_inches": 0.03,
-})
+TEXTW = 395.8225 / 72.27  # ~5.48 polegadas (largura exata de acmsmall)
 
-PAL = {"kyber512": "#0072B2", "ctru-light": "#D55E00", "ecdh": "#009E73"}
-LABEL = {"kyber512": "Kyber-512", "ctru-light": "CTRU-Light", "ecdh": "ECDH"}
-
-df = pd.read_csv(DATA / "bench_tidy.csv")
 summ = pd.read_csv(DATA / "summary_bench.csv")
 flash = pd.read_csv(DATA / "flash_sizes.csv")
 
 # ==============================================================================
-# 1. LATENCY PLOT
+# 1. LATENCY PLOT (ggplot2 / plotnine)
 # ==============================================================================
 def make_latency_plot():
-    kem = df[df.operation != "msgcrypt"].copy()
-    kem["cfg"] = kem.variant + " " + kem.optimization
-    cols = ["asm -O3", "asm -Os", "ref -O3", "ref -Os"]
-    titles = ["Assembly (-O3)", "Assembly (-Os)", "Referência (-O3)", "Referência (-Os)"]
-    
-    fig, axs = plt.subplots(1, 4, figsize=(TEXTW, 2.3), sharey=True)
+    s = summ[summ.operation != "msgcrypt"].copy()
     
     op_map = {"keygen": "KeyGen", "encaps": "Encaps", "decaps": "Decaps"}
-    kem["op_label"] = kem.operation.map(op_map)
-    op_order = ["KeyGen", "Encaps", "Decaps"]
+    alg_map = {"kyber512": "Kyber-512", "ctru-light": "CTRU-Light", "ecdh": "ECDH"}
+    panel_map = {
+        ("asm", "-O3"): "Assembly (-O3)",
+        ("asm", "-Os"): "Assembly (-Os)",
+        ("ref", "-O3"): "Referência (-O3)",
+        ("ref", "-Os"): "Referência (-Os)",
+    }
     
-    for i, (ax, cfg, title) in enumerate(zip(axs, cols, titles)):
-        sub_ = kem[kem.cfg == cfg]
-        
-        sns.pointplot(
-            data=sub_, x="op_label", y="t_exec_ms", hue="algorithm", ax=ax,
-            order=op_order, hue_order=["kyber512", "ctru-light", "ecdh"],
-            palette=PAL, errorbar=("ci", 95), dodge=0.28,
-            linestyles="--", markers=["o", "s", "D"], markersize=4,
-            err_kws={"linewidth": 0.8}, legend=False
-        )
-        ax.set_title(title, fontsize=7.5, fontweight="bold", pad=4)
-        ax.set_xlabel("")
-        ax.tick_params(axis="x", rotation=25, labelsize=6.8)
-        # align tick labels nicely
-        for label in ax.get_xticklabels():
-            label.set_horizontalalignment('right')
-        ax.grid(True, axis="y", linestyle=":", alpha=0.5)
-        ax.grid(False, axis="x")
-        if i > 0:
-            ax.tick_params(axis="y", left=False)
-
-    axs[0].set_yscale("log")
-    axs[0].set_ylim(60, 25000)
-    axs[0].set_ylabel("Latência (escala log)", fontsize=8)
-    
-    y_ticks = [100, 1000, 10000]
-    axs[0].set_yticks(y_ticks)
-    axs[0].yaxis.set_major_formatter(
-        ticker.FuncFormatter(lambda y, _: f"{int(y):,} ms" if y < 1000 else f"{int(y/1000)} s")
+    s["op_label"] = pd.Categorical(s.operation.map(op_map), categories=["KeyGen", "Encaps", "Decaps"], ordered=True)
+    s["alg_label"] = pd.Categorical(s.algorithm.map(alg_map), categories=["Kyber-512", "CTRU-Light", "ECDH"], ordered=True)
+    s["panel"] = pd.Categorical(
+        [panel_map[(v, o)] for v, o in zip(s.variant, s.optimization)],
+        categories=["Assembly (-O3)", "Assembly (-Os)", "Referência (-O3)", "Referência (-Os)"],
+        ordered=True
     )
     
-    handles = [
-        plt.Line2D([0], [0], color=PAL["kyber512"], marker="o", linestyle="--", lw=1.0, ms=4, label="Kyber-512"),
-        plt.Line2D([0], [0], color=PAL["ctru-light"], marker="s", linestyle="--", lw=1.0, ms=4, label="CTRU-Light"),
-        plt.Line2D([0], [0], color=PAL["ecdh"], marker="D", linestyle="--", lw=1.0, ms=4, label="ECDH"),
-    ]
-    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
-               bbox_to_anchor=(0.5, 1.08), fontsize=7.5)
+    s["ymin"] = s.mean_ms - s.ci95_ms
+    s["ymax"] = s.mean_ms + s.ci95_ms
     
-    sns.despine(fig)
-    fig.tight_layout(rect=[0, 0, 1, 0.93], w_pad=0.5)
-    fig.savefig(OUT / "latency.png", dpi=300)
-    fig.savefig(OUT / "latency.pdf")
+    dodge = p9.position_dodge(width=0.35)
+    
+    p = (
+        p9.ggplot(s, p9.aes(x="op_label", y="mean_ms", color="alg_label", group="alg_label"))
+        + p9.geom_line(position=dodge, linetype="dashed", size=0.6, alpha=0.85)
+        + p9.geom_errorbar(p9.aes(ymin="ymin", ymax="ymax"), position=dodge, width=0.18, size=0.5)
+        + p9.geom_point(p9.aes(shape="alg_label"), position=dodge, size=2.2)
+        + p9.facet_wrap("~ panel", nrow=1)
+        + p9.scale_y_log10(breaks=[100, 1000, 10000], labels=["100 ms", "1 s", "10 s"], limits=(60, 25000))
+        + p9.scale_color_manual(values={"Kyber-512": "#0072B2", "CTRU-Light": "#D55E00", "ECDH": "#009E73"}, name=" ")
+        + p9.scale_shape_manual(values={"Kyber-512": "o", "CTRU-Light": "s", "ECDH": "^"}, name=" ")
+        + p9.labs(x="", y="Latência (escala log)")
+        + p9.theme_bw(base_size=8)
+        + p9.theme(
+            legend_position="top",
+            legend_direction="horizontal",
+            legend_box_spacing=0.05,
+            legend_margin=0,
+            axis_text_x=p9.element_text(rotation=25, ha="right", size=7),
+            strip_background=p9.element_rect(fill="#f0f0f0", color="#cccccc", size=0.5),
+            strip_text=p9.element_text(weight="bold", size=7.5),
+            panel_grid_minor=p9.element_blank(),
+            panel_grid_major_x=p9.element_blank(),
+            panel_grid_major_y=p9.element_line(color="#e0e0e0", size=0.4, linetype="dotted"),
+            figure_size=(TEXTW, 2.5)
+        )
+    )
+    
+    fig = p.draw()
+    fig.savefig(OUT / "latency.png", dpi=300, bbox_inches="tight")
+    fig.savefig(OUT / "latency.pdf", bbox_inches="tight")
     plt.close(fig)
+    print("Latency figure saved!")
 
 # ==============================================================================
-# 2. TRADEOFF PLOT (Stack peak vs Latency)
+# 2. TRADEOFF PLOT (ggplot2 / plotnine com eixo secundário)
 # ==============================================================================
 def make_tradeoff_plot():
     s = summ[summ.operation != "msgcrypt"].copy()
     
-    fig, ax = plt.subplots(figsize=(TEXTW, 2.5))
+    alg_map = {"kyber512": "Kyber-512", "ctru-light": "CTRU-Light", "ecdh": "ECDH"}
+    s["cfg_label"] = [f"{alg_map[a]} ({v})" for a, v in zip(s.algorithm, s.variant)]
+    cfg_order = [
+        "Kyber-512 (asm)", "Kyber-512 (ref)",
+        "CTRU-Light (asm)", "CTRU-Light (ref)",
+        "ECDH (asm)", "ECDH (ref)"
+    ]
+    s["cfg_label"] = pd.Categorical(s.cfg_label, categories=cfg_order, ordered=True)
     
-    alg_order = ["kyber512", "ctru-light", "ecdh"]
-    markers = {"asm": "o", "ref": "s"}
+    s["ymin"] = s.mean_ms - s.ci95_ms
+    s["ymax"] = s.mean_ms + s.ci95_ms
     
-    for alg in alg_order:
-        for var in ["asm", "ref"]:
-            g = s[(s.algorithm == alg) & (s.variant == var)]
-            if len(g) == 0:
-                continue
-            label = f"{LABEL[alg]} ({var})"
-            ax.errorbar(
-                g.stack_peak_b, g.mean_ms, yerr=g.ci95_ms,
-                fmt=markers[var],
-                color=PAL[alg],
-                mfc=PAL[alg] if var == "asm" else "white",
-                mec=PAL[alg],
-                ms=4.8, mew=1.2, capsize=2, elinewidth=0.8,
-                linestyle="none", label=label, zorder=4
-            )
-            
-    ax.set_xlabel("Pico de pilha (bytes)", fontsize=8)
-    ax.set_ylabel("Latência média (escala log)", fontsize=8)
-    ax.set_yscale("log")
-    ax.set_xlim(350, 3500)
-    ax.set_ylim(60, 25000)
+    colors = {
+        "Kyber-512 (asm)": "#0072B2", "Kyber-512 (ref)": "#0072B2",
+        "CTRU-Light (asm)": "#D55E00", "CTRU-Light (ref)": "#D55E00",
+        "ECDH (asm)": "#009E73", "ECDH (ref)": "#009E73"
+    }
+    fills = {
+        "Kyber-512 (asm)": "#0072B2", "Kyber-512 (ref)": "white",
+        "CTRU-Light (asm)": "#D55E00", "CTRU-Light (ref)": "white",
+        "ECDH (asm)": "#009E73", "ECDH (ref)": "white"
+    }
+    shapes = {
+        "Kyber-512 (asm)": "o", "Kyber-512 (ref)": "s",
+        "CTRU-Light (asm)": "o", "CTRU-Light (ref)": "s",
+        "ECDH (asm)": "o", "ECDH (ref)": "s"
+    }
     
-    y_ticks = [100, 1000, 10000]
-    ax.set_yticks(y_ticks)
-    ax.yaxis.set_major_formatter(
-        ticker.FuncFormatter(lambda y, _: f"{int(y):,} ms" if y < 1000 else f"{int(y/1000)} s")
+    p = (
+        p9.ggplot(s, p9.aes(x="stack_peak_b", y="mean_ms", color="cfg_label", fill="cfg_label", shape="cfg_label"))
+        + p9.geom_errorbar(p9.aes(ymin="ymin", ymax="ymax"), width=25, size=0.5, alpha=0.8)
+        + p9.geom_point(size=2.8, stroke=1.1)
+        + p9.scale_x_continuous(
+            limits=(350, 3500),
+            breaks=[500, 1000, 1500, 2000, 2500, 3000],
+            labels=["500 B", "1.000 B", "1.500 B", "2.000 B", "2.500 B", "3.000 B"]
+        )
+        + p9.scale_y_log10(
+            limits=(60, 25000),
+            breaks=[100, 1000, 10000],
+            labels=["100 ms", "1 s", "10 s"]
+        )
+        + p9.scale_color_manual(values=colors, name="Configuração")
+        + p9.scale_fill_manual(values=fills, name="Configuração")
+        + p9.scale_shape_manual(values=shapes, name="Configuração")
+        + p9.guides(
+            color=p9.guide_legend(ncol=2),
+            fill=p9.guide_legend(ncol=2),
+            shape=p9.guide_legend(ncol=2)
+        )
+        + p9.labs(x="Pico de pilha (bytes)", y="Latência média (escala log)")
+        + p9.theme_bw(base_size=8)
+        + p9.theme(
+            legend_position=(0.77, 0.77),
+            legend_background=p9.element_rect(fill="white", color="#d0d0d0", size=0.5),
+            legend_title=p9.element_blank(),
+            legend_text=p9.element_text(size=7),
+            legend_key=p9.element_blank(),
+            legend_box_margin=2,
+            panel_grid_minor=p9.element_blank(),
+            panel_grid_major=p9.element_line(color="#e5e5e5", size=0.4, linetype="dotted"),
+            figure_size=(TEXTW, 2.5)
+        )
     )
     
-    ax.set_xticks([500, 1000, 1500, 2000, 2500, 3000])
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x):,} B"))
-    
+    fig = p.draw()
+    ax = fig.axes[0]
     ax_top = ax.twiny()
     ax_top.set_xlim(ax.get_xlim())
     top_pcts = [10, 20, 30, 40, 50]
-    top_ticks = [6144 * p / 100 for p in top_pcts]
+    top_ticks = [6144 * p_val / 100 for p_val in top_pcts]
     ax_top.set_xticks(top_ticks)
-    ax_top.set_xticklabels([f"{p}%" for p in top_pcts], fontsize=7)
+    ax_top.set_xticklabels([f"{p_val}%" for p_val in top_pcts], fontsize=7)
     ax_top.set_xlabel("Ocupação da SRAM do ATmega4809 (total 6 KB)", fontsize=7.5, labelpad=4)
     ax_top.grid(False)
     
-    handles, labels = ax.get_legend_handles_labels()
-    order_dict = {
-        "Kyber-512 (asm)": 0, "Kyber-512 (ref)": 1,
-        "CTRU-Light (asm)": 2, "CTRU-Light (ref)": 3,
-        "ECDH (asm)": 4, "ECDH (ref)": 5
-    }
-    sorted_pairs = sorted(zip(handles, labels), key=lambda p: order_dict.get(p[1], 99))
-    h_sorted = [p[0] for p in sorted_pairs]
-    l_sorted = [p[1] for p in sorted_pairs]
-    
-    leg = ax.legend(
-        h_sorted, l_sorted,
-        frameon=True, facecolor="white", edgecolor="#d0d0d0", framealpha=0.95,
-        loc="upper right", bbox_to_anchor=(0.98, 0.96), ncol=2, fontsize=7,
-        handletextpad=0.3, columnspacing=0.8
-    )
-    leg.set_zorder(5)
-    
-    ax.grid(True, linestyle=":", alpha=0.5)
-    sns.despine(fig, top=False)
-    fig.tight_layout()
-    fig.savefig(OUT / "tradeoff.png", dpi=300)
-    fig.savefig(OUT / "tradeoff.pdf")
+    fig.savefig(OUT / "tradeoff.png", dpi=300, bbox_inches="tight")
+    fig.savefig(OUT / "tradeoff.pdf", bbox_inches="tight")
     plt.close(fig)
+    print("Tradeoff figure saved!")
 
 # ==============================================================================
-# 3. FLASH SIZES PLOT
+# 3. FLASH SIZES PLOT (ggplot2 / plotnine)
 # ==============================================================================
 def make_flash_plot():
     fl = flash.copy()
-    fl["alg_name"] = fl.algorithm.map(LABEL)
-    fl["cfg"] = fl.alg_name + "\n" + fl.variant
+    
+    alg_map = {"kyber512": "Kyber-512", "ctru-light": "CTRU-Light", "ecdh": "ECDH"}
+    fl["alg_name"] = fl.algorithm.map(alg_map)
+    fl["cfg"] = [f"{a}\n{v}" for a, v in zip(fl.alg_name, fl.variant)]
     
     order = [
         "Kyber-512\nasm", "Kyber-512\nref",
         "CTRU-Light\nasm", "CTRU-Light\nref",
         "ECDH\nasm", "ECDH\nref"
     ]
+    fl["cfg"] = pd.Categorical(fl.cfg, categories=order, ordered=True)
+    fl["flash_kb"] = fl.flash_b / 1024.0
     
-    fig, ax = plt.subplots(figsize=(TEXTW, 2.3))
+    opt_map = {"-O3": "Otimização -O3", "-Os": "Otimização -Os"}
+    fl["opt_label"] = pd.Categorical(fl.optimization.map(opt_map), categories=["Otimização -O3", "Otimização -Os"], ordered=True)
     
-    palette = {"-O3": "#0072B2", "-Os": "#E69F00"}
-    sns.barplot(
-        data=fl, x="cfg", y="flash_b", hue="optimization", ax=ax,
-        order=order, palette=palette, width=0.62,
-        edgecolor="black", linewidth=0.5, zorder=3
+    colors = {"Otimização -O3": "#0072B2", "Otimização -Os": "#E69F00"}
+    
+    p = (
+        p9.ggplot(fl, p9.aes(x="cfg", y="flash_kb", fill="opt_label"))
+        + p9.geom_col(position=p9.position_dodge(width=0.65), width=0.58, color="black", size=0.4)
+        + p9.geom_hline(yintercept=48, linetype="dashed", color="#B22222", size=0.8)
+        + p9.annotate("text", x=5.4, y=50.2, label="Capacidade do MCU (48 KB)",
+                      color="#B22222", size=7.5, fontweight="bold", ha="right", va="bottom")
+        + p9.scale_fill_manual(values=colors, name="")
+        + p9.scale_y_continuous(
+            limits=(0, 56),
+            breaks=[0, 8, 16, 24, 32, 40, 48],
+            expand=(0, 0, 0.05, 0)
+        )
+        + p9.labs(x="", y="Flash ocupada (KB)")
+        + p9.theme_bw(base_size=8)
+        + p9.theme(
+            legend_position="top",
+            legend_direction="horizontal",
+            legend_title=p9.element_blank(),
+            legend_box_spacing=0.05,
+            panel_grid_minor=p9.element_blank(),
+            panel_grid_major_x=p9.element_blank(),
+            panel_grid_major_y=p9.element_line(color="#e0e0e0", size=0.4, linetype="dotted"),
+            figure_size=(TEXTW, 2.3)
+        )
     )
     
-    ax.axhline(49152, color="#c0392b", ls="--", lw=1.0, zorder=4)
-    ax.text(5.45, 50200, "Capacidade do MCU (48 KB)", color="#c0392b",
-            fontsize=7.5, fontweight="bold", va="bottom", ha="right", zorder=5)
-    
-    ax.set_xlabel("")
-    ax.set_ylabel("Flash ocupada (KB)", fontsize=8)
-    ax.set_yticks([k * 8192 for k in range(7)])
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v/1024:.0f}"))
-    ax.set_ylim(0, 58000)
-    
-    ax.grid(True, axis="y", linestyle=":", alpha=0.6, zorder=0)
-    ax.grid(False, axis="x")
-    
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, ["Otimização -O3", "Otimização -Os"],
-              loc="upper center", bbox_to_anchor=(0.5, 1.12),
-              frameon=False, ncol=2, fontsize=7.5)
-    
-    sns.despine(fig)
-    fig.tight_layout()
-    fig.savefig(OUT / "flash.png", dpi=300)
-    fig.savefig(OUT / "flash.pdf")
+    fig = p.draw()
+    fig.savefig(OUT / "flash.png", dpi=300, bbox_inches="tight")
+    fig.savefig(OUT / "flash.pdf", bbox_inches="tight")
     plt.close(fig)
+    print("Flash figure saved!")
 
-make_latency_plot()
-make_tradeoff_plot()
-make_flash_plot()
-print("Direct export to artigo/figures complete!")
+if __name__ == "__main__":
+    make_latency_plot()
+    make_tradeoff_plot()
+    make_flash_plot()
+    print("Direct export to artigo/figures complete via ggplot2 (plotnine)!")

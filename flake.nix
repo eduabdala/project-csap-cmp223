@@ -34,12 +34,12 @@
           pname = "pyDOE3";
           version = "1.0.3";
           pyproject = true;
-          src = pkgs.fetchPypi {
-            inherit pname version;
-            # Update with: nix-prefetch-url https://.../pyDOE3-<ver>.tar.gz
-            hash = "sha256-0000000000000000000000000000000000000000000=";
+          src = pkgs.python3Packages.fetchPypi {
+            pname = "pydoe3";
+            inherit version;
+            hash = "sha256-4FR9e5GdzSWavZa5HqVvjRpB9j79bzk+rNvAZpfWA04=";
           };
-          nativeBuildInputs = [ pkgs.python3Packages.setuptools ];
+          nativeBuildInputs = with pkgs.python3Packages; [ hatchling hatch-vcs ];
           propagatedBuildInputs = with pkgs.python3Packages; [ numpy scipy ];
           doCheck = false;
         };

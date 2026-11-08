@@ -684,6 +684,9 @@ def main() -> int:
         )
         return 1
 
+    if args.timeout <= 10.0 and args.alg == "ecdh":
+        args.timeout = 35.0
+
     total_steps = len(seq) * args.repeat
     is_battery = total_steps > 1
 

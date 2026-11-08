@@ -26,7 +26,6 @@ artigo/main.pdf
 
 # Firmware build + analysis artifacts
 src/firmware/*/build/
-src/firmware/pqc/
 src/firmware/build/
 src/firmware/.dfp/
 src/firmware/atmega4809/.dfp/
