@@ -1,0 +1,45 @@
+# ============================================================
+# config.yaml — Experiment factor matrix (DoE).
+# Consumed by the Snakefile. Editing here = reconfiguring the experiment.
+# ============================================================
+
+# Factors (independent variables)
+algorithms:
+  - kyber512
+  - ctru-light
+  - ecdh          # classical baseline
+
+variants:          # implementation: plain reference C vs. AVR assembly
+  - ref
+  - asm
+# => 3 algorithms x 2 variants = 6 distinct binaries (build/flash/measure each)
+
+clock_mhz:
+  - 20
+  - 10
+  - 5
+
+optimization:
+  - "-Os"
+  - "-O3"
+
+operations:
+  - keygen
+  - encaps
+  - decaps
+
+# Design of experiments
+design: full        # "full" (pyDOE3 fullfact) or "fracfact" (needs generator)
+# fraction_generator: "a b c abc"   # only for design: fracfact (2-level only)
+iterations: 30      # N per combination (factor x operation)
+seed: 42            # seed for randomizing the execution order
+
+# Bench
+shunt_ohms: 1.0     # NOMINAL value; the calibrated real one goes in calib.yaml
+serial_port: "/dev/ttyACM0"
+baud: 115200
+
+# Paths
+firmware_dir: "../firmware/atmega4809"   # or ../firmware/rp2040 (see its Makefile)
+raw_dir: "data/raw"
+proc_dir: "data/processed"

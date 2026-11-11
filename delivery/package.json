@@ -1,0 +1,15 @@
+{
+  "name": "project-csap-cmp223",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Slides e artigo do trabalho de CMP223 (INF-UFRGS)",
+  "scripts": {
+    "pdf": "marp --config marp.config.mjs --input-dir slides --output results/slides --pdf",
+    "pptx": "marp --config marp.config.mjs --input-dir slides --output results/slides --pptx",
+    "html": "marp --config marp.config.mjs --input-dir slides --output results/slides --html"
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "4.2.3",
+    "@mermaid-js/mermaid-cli": "11.16.0"
+  }
+}
