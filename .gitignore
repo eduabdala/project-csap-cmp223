@@ -64,6 +64,15 @@ delivery/data/experiments/exp_*/report.md
 delivery/data/experiments/exp_*/summary.csv
 delivery/data/experiments/exp_*/raw/runs.csv
 
+# Cache do tikzDevice e saídas do Quarto (analise.qmd)
+results/.cache/
+delivery/results/.cache/
+src/analysis/analise.html
+src/analysis/analise_files/
+src/analysis/*.rmarkdown
+src/analysis/*.knit.md
+.quarto/
+
 # Diagramas temporários
 diagrams/.cache/
 diagrams/out/
