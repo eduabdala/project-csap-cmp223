@@ -89,27 +89,59 @@ SLIDE_DECKS = [
 ]
 
 
-def build_delivery_tgz(out_tgz="delivery.tgz"):
-    """Empacota a pasta delivery/ em delivery.tgz ignorando caches, ambientes e artefatos derivados."""
-    exclude_dirs = {".venv", "node_modules", ".snakemake", "__pycache__", ".ipynb_checkpoints", "build"}
-    exclude_files = {".env", "delivery.tgz"}
+def _compact_la_csv_bytes(raw_bytes: bytes, is_kyber_osc: bool) -> bytes:
+    """Compacta em memória linhas repetidas de nível constante dos CSVs do LA apenas para o .tgz (<16 MB)."""
+    lines = raw_bytes.decode("utf-8", errors="replace").splitlines(keepends=True)
+    if len(lines) < 5000:
+        return raw_bytes
+    out, data_rows = [], []
+    for line in lines:
+        if line.startswith("#") or line.startswith("sample_idx"):
+            out.append(line)
+        else:
+            parts = line.split(",")
+            if len(parts) >= 3:
+                data_rows.append((float(parts[1]), parts[2], line))
+    n = len(data_rows)
+    for i, (t_s, d0, line) in enumerate(data_rows):
+        keep = (i == 0 or i == n - 1 or (is_kyber_osc and t_s <= 2.0))
+        if not keep and (data_rows[i - 1][1] != d0 or (i + 1 < n and data_rows[i + 1][1] != d0)):
+            keep = True
+        if keep:
+            out.append(line)
+    return "".join(out).encode("utf-8")
 
-    def _filter(tarinfo):
-        parts = pathlib.Path(tarinfo.name).parts
-        if any(p in exclude_dirs for p in parts):
-            return None
-        if parts[-1] in exclude_files or parts[-1].endswith(".pyc"):
-            return None
-        if len(parts) >= 3 and parts[0] == "delivery" and parts[1] == "results" and parts[-1] != ".gitkeep" and not tarinfo.isdir():
-            return None
-        if len(parts) == 4 and parts[:3] == ("delivery", "slides", "figures") and parts[-1].endswith(".png"):
-            return None
-        return tarinfo
+
+def build_delivery_tgz(out_tgz="delivery.tgz"):
+    """Empacota a pasta delivery/ em delivery.tgz (<16 MB) sem alterar os arquivos brutos em disco."""
+    import io
+    exclude_dirs = {".venv", "node_modules", ".snakemake", "__pycache__", ".ipynb_checkpoints", "build"}
+    exclude_files = {".env", "delivery.tgz", "parcial.tgz"}
 
     with tarfile.open(out_tgz, "w:gz") as tar:
-        tar.add("delivery", arcname="delivery", filter=_filter)
+        for root, dirs, files in os.walk("delivery"):
+            dirs[:] = sorted(d for d in dirs if d not in exclude_dirs)
+            rel_root = pathlib.Path(root)
+            tar.add(root, arcname=str(rel_root), recursive=False)
+            for fname in sorted(files):
+                if fname in exclude_files or fname.endswith(".pyc"):
+                    continue
+                fpath = rel_root / fname
+                parts = fpath.parts
+                if len(parts) >= 3 and parts[0] == "delivery" and parts[1] == "results" and fname != ".gitkeep":
+                    continue
+                if len(parts) == 4 and parts[:3] == ("delivery", "slides", "figures") and fname.endswith(".png"):
+                    continue
+                if fname.startswith("la_") and fname.endswith(".csv"):
+                    data = _compact_la_csv_bytes(fpath.read_bytes(), fname == "la_kyber512_asm_O3_20MHz.csv")
+                    ti = tar.gettarinfo(str(fpath), arcname=str(fpath))
+                    ti.size = len(data)
+                    tar.addfile(ti, io.BytesIO(data))
+                else:
+                    tar.add(str(fpath), arcname=str(fpath), recursive=False)
+    shutil.copy2(out_tgz, "parcial.tgz")
     size_mb = os.path.getsize(out_tgz) / (1024 * 1024)
-    print(f"[PACKAGE] Gerado {out_tgz} ({size_mb:.2f} MB)")
+    print(f"[PACKAGE] Gerados {out_tgz} e parcial.tgz ({size_mb:.2f} MB) — arquivos em disco preservados integralmente.")
 
 
 # ---- Meta padrão (sem placa): compila os 12 firmwares + design + catálogo + notebook + slides + delivery.tgz ----

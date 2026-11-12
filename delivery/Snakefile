@@ -197,29 +197,60 @@ rule bench:
         {ENV_PREFIX} {PYTHON} src/analysis/catalog.py
         """
 
-# ---- 7. Gera o pacote compactado ../delivery.tgz limpo ----
+# ---- 7. Gera o pacote compactado ../delivery.tgz (<16 MB) sem alterar os CSVs em disco ----
 rule package:
     run:
+        import io
         exclude_dirs = {".venv", "node_modules", ".snakemake", "__pycache__", ".ipynb_checkpoints", "build"}
-        exclude_files = {".env", "delivery.tgz"}
+        exclude_files = {".env", "delivery.tgz", "parcial.tgz"}
 
-        def _filter(tarinfo):
-            parts = pathlib.Path(tarinfo.name).parts
-            if any(p in exclude_dirs for p in parts):
-                return None
-            if parts[-1] in exclude_files or parts[-1].endswith(".pyc"):
-                return None
-            if len(parts) >= 3 and parts[0] == "delivery" and parts[1] == "results" and parts[-1] != ".gitkeep" and not tarinfo.isdir():
-                return None
-            if len(parts) == 4 and parts[:3] == ("delivery", "slides", "figures") and parts[-1].endswith(".png"):
-                return None
-            return tarinfo
+        def _compact_la(raw_bytes: bytes, is_kyber_osc: bool) -> bytes:
+            lines = raw_bytes.decode("utf-8", errors="replace").splitlines(keepends=True)
+            if len(lines) < 5000:
+                return raw_bytes
+            out, data_rows = [], []
+            for line in lines:
+                if line.startswith("#") or line.startswith("sample_idx"):
+                    out.append(line)
+                else:
+                    parts = line.split(",")
+                    if len(parts) >= 3:
+                        data_rows.append((float(parts[1]), parts[2], line))
+            n = len(data_rows)
+            for i, (t_s, d0, line) in enumerate(data_rows):
+                keep = (i == 0 or i == n - 1 or (is_kyber_osc and t_s <= 2.0))
+                if not keep and (data_rows[i - 1][1] != d0 or (i + 1 < n and data_rows[i + 1][1] != d0)):
+                    keep = True
+                if keep:
+                    out.append(line)
+            return "".join(out).encode("utf-8")
 
         out_tgz = "../delivery.tgz"
         with tarfile.open(out_tgz, "w:gz") as tar:
-            tar.add(".", arcname="delivery", filter=_filter)
+            for root, dirs, files in os.walk("."):
+                dirs[:] = sorted(d for d in dirs if d not in exclude_dirs)
+                rel_root = pathlib.Path("delivery") / pathlib.Path(root)
+                tar.add(root, arcname=str(rel_root), recursive=False)
+                for fname in sorted(files):
+                    if fname in exclude_files or fname.endswith(".pyc"):
+                        continue
+                    fpath = pathlib.Path(root) / fname
+                    arcpath = rel_root / fname
+                    parts = arcpath.parts
+                    if len(parts) >= 3 and parts[0] == "delivery" and parts[1] == "results" and fname != ".gitkeep":
+                        continue
+                    if len(parts) == 4 and parts[:3] == ("delivery", "slides", "figures") and fname.endswith(".png"):
+                        continue
+                    if fname.startswith("la_") and fname.endswith(".csv"):
+                        data = _compact_la(fpath.read_bytes(), fname == "la_kyber512_asm_O3_20MHz.csv")
+                        ti = tar.gettarinfo(str(fpath), arcname=str(arcpath))
+                        ti.size = len(data)
+                        tar.addfile(ti, io.BytesIO(data))
+                    else:
+                        tar.add(str(fpath), arcname=str(arcpath), recursive=False)
+        shutil.copy2(out_tgz, "../parcial.tgz")
         size_mb = os.path.getsize(out_tgz) / (1024 * 1024)
-        print(f"[PACKAGE] Gerado {out_tgz} ({size_mb:.2f} MB)")
+        print(f"[PACKAGE] Gerados {out_tgz} e ../parcial.tgz ({size_mb:.2f} MB) — arquivos em disco preservados integralmente.")
 
 # ---- 8. Limpeza de todos os artefatos derivados para testar do zero ----
 rule clean:
