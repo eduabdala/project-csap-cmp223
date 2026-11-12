@@ -46,8 +46,20 @@
 
         analysis = with pkgs; [
           snakemake
+          nodejs
           (python3.withPackages (ps: with ps; [
-            numpy pandas scipy matplotlib pyserial
+            numpy
+            pandas
+            scipy
+            statsmodels
+            matplotlib
+            seaborn
+            plotnine
+            pillow
+            jupyter
+            nbconvert
+            ipykernel
+            pyserial
           ] ++ [ pyDOE3 ]))
         ];
       in
@@ -55,6 +67,10 @@
         devShells.default = pkgs.mkShell {
           name = "cmp223-dev";
           packages = avr ++ bench ++ analysis;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+            pkgs.stdenv.cc.cc.lib
+            pkgs.zlib
+          ];
 
           shellHook = ''
             echo "CMP223 devShell — AVR + analysis"

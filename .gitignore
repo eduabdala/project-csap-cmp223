@@ -1,14 +1,72 @@
-slides/*.pdf
+# Dependências e ambientes locais
+.venv/
+delivery/.venv/
 node_modules/
-dist/
+delivery/node_modules/
+.snakemake/
+delivery/.snakemake/
+.env
+delivery/.env
+.direnv/
+result
 
-# Diagramas: cache temporário do mermaid-cli.
-# diagrams/out/ fica versionado para o LaTeX/Marp não depender do build.
+# Pacotes compactados gerados pelo pipeline
+*.tgz
+*.tar.gz
+
+# Caches Python e Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Builds de firmware e SDKs
+src/firmware/*/build/
+src/firmware/build/
+src/firmware/rp2040/.pico-sdk/
+delivery/src/firmware/*/build/
+delivery/src/firmware/build/
+
+# Resultados gerados pelo pipeline (mantém apenas a estrutura com .gitkeep)
+results/processed/*
+!results/processed/.gitkeep
+results/figures/*
+!results/figures/.gitkeep
+results/tables/*
+!results/tables/.gitkeep
+results/slides/*
+!results/slides/.gitkeep
+
+delivery/results/processed/*
+!delivery/results/processed/.gitkeep
+delivery/results/figures/*
+!delivery/results/figures/.gitkeep
+delivery/results/tables/*
+!delivery/results/tables/.gitkeep
+delivery/results/slides/*
+!delivery/results/slides/.gitkeep
+
+# Figuras dos slides geradas pelo analise.ipynb (mantém bancada.jpg estática)
+slides/figures/*.png
+delivery/slides/figures/*.png
+slides/*.pdf
+dist/
+data/processed/
+src/analysis/data/
+marp-ppt/
+
+# Artefatos derivados antigos dentro de pastas de experimentos
+data/experiments/exp_*/figures/
+data/experiments/exp_*/report.md
+data/experiments/exp_*/summary.csv
+data/experiments/exp_*/raw/runs.csv
+delivery/data/experiments/exp_*/figures/
+delivery/data/experiments/exp_*/report.md
+delivery/data/experiments/exp_*/summary.csv
+delivery/data/experiments/exp_*/raw/runs.csv
+
+# Diagramas temporários
 diagrams/.cache/
 diagrams/out/
-
-data/processed/
-marp-ppt/
 
 # LaTeX (artefatos de compilação)
 *.aux
@@ -23,17 +81,3 @@ marp-ppt/
 artigo/main.pdf
 *.cut
 .kiro
-
-# Firmware build + analysis artifacts
-src/firmware/*/build/
-src/firmware/build/
-src/firmware/.dfp/
-src/firmware/atmega4809/.dfp/
-src/firmware/rp2040/.pico-sdk/
-src/analysis/data/
-.venv/
-.ipynb_checkpoints/
-__pycache__/
-*.pyc
-result
-.direnv/

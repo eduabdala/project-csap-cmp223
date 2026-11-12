@@ -1,0 +1,40 @@
+# Dependências e ambientes locais
+.venv/
+node_modules/
+.snakemake/
+.env
+.direnv/
+result
+
+# Pacotes compactados
+*.tgz
+*.tar.gz
+
+# Caches Python e Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Builds de firmware
+src/firmware/*/build/
+src/firmware/build/
+
+# Resultados gerados pelo pipeline (mantém apenas .gitkeep)
+results/processed/*
+!results/processed/.gitkeep
+results/figures/*
+!results/figures/.gitkeep
+results/tables/*
+!results/tables/.gitkeep
+results/slides/*
+!results/slides/.gitkeep
+
+# Figuras de slides geradas pelo analise.ipynb (mantém bancada.jpg)
+slides/figures/*.png
+slides/*.pdf
+
+# Artefatos derivados dentro de pastas de experimentos
+data/experiments/exp_*/figures/
+data/experiments/exp_*/report.md
+data/experiments/exp_*/summary.csv
+data/experiments/exp_*/raw/runs.csv

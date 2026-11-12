@@ -380,8 +380,10 @@ def main():
     ap.add_argument("--tag", default="", help="Optional label to append to experiment folder")
     ap.add_argument("--alg", choices=["all", "kyber512", "ctru-light", "ecdh"], default="kyber512",
                     help="Algorithm filter (default: kyber512)")
-    ap.add_argument("--use-la", action="store_true", default=False,
-                    help="Enable hardware logic analyzer capture via sigrok-cli")
+    ap.add_argument("--use-la", dest="use_la", action="store_true", default=True,
+                    help="Enable hardware logic analyzer capture via sigrok-cli (DEFAULT: True)")
+    ap.add_argument("--no-la", dest="use_la", action="store_false",
+                    help="Disable hardware logic analyzer capture")
     ap.add_argument("--variants", nargs="+", default=["asm", "ref"],
                     help="Variants to evaluate (default: asm ref)")
     ap.add_argument("--opts", nargs="+", default=["O3"],
@@ -389,6 +391,12 @@ def main():
     ap.add_argument("--clocks", nargs="+", type=float, default=[20.0],
                     help="Clock frequencies in MHz (default: 20.0)")
     args = ap.parse_args()
+
+    if args.mode == "bench" and not os.path.exists(args.port):
+        print(f"!! [ERRO] Porta serial {args.port} não encontrada (Arduino Nano Every desconectado?).")
+        print(f"!! Conecte a placa USB (ou passe --port /dev/ttyACM1) para rodar em modo bench,")
+        print(f"!! ou rode 'snakemake -j1' (sem 'experiment') para reproduzir a análise a partir dos dados já coletados.")
+        sys.exit(1)
 
     # 1. Generate unique directory for this experiment
     # Mode goes into the folder name so simulated runs can never be mistaken for bench data.
@@ -468,14 +476,12 @@ def main():
                 op_code = item.get("cmd", "")
                 op_name = op_map.get(op_code, item.get("op_name", "").lower())
                 rep_counter[op_name] = rep_counter.get(op_name, 0) + 1
-                lat_ms = item["t_exec_ms"]
+                has_la = item.get("t_la_ms") is not None
+                lat_ms = item["t_la_ms"] if has_la else item["t_exec_ms"]
                 tot_ms = item.get("t_total_ms", lat_ms)
                 clk = combo["clock_mhz"]
-                # Derived from the host-side latency (not a cycle counter).
-                cycles = int(round(lat_ms * clk * 1000))
-                # Energy is NOT measured until the shunt + battery are installed:
-                # it must come from parse.py (E = INT V*i dt over the scope CSV).
-                # Never fill it with a constant current here.
+                cycles = item["cycles_la"] if has_la else int(round(lat_ms * clk * 1000))
+                lat_method = "saleae_logic_analyzer_gpio" if has_la else "host_serial_first_byte"
                 raw_records.append({
                     "run_order": len(raw_records) + 1,
                     "repetition": rep_counter[op_name],
@@ -486,6 +492,8 @@ def main():
                     "clock_mhz": combo["clock_mhz"],
                     "operation": op_name,
                     "latency_ms": lat_ms,
+                    "latency_host_serial_ms": item["t_exec_ms"],
+                    "latency_la_gpio_ms": item.get("t_la_ms"),
                     "total_time_ms": tot_ms,
                     "cycles": cycles,
                     "stack_peak_b": item["stack_peak"],
@@ -498,7 +506,7 @@ def main():
                     "msg_validated": item.get("msg_validated"),
                     "status": item.get("status", "OK"),
                     "data_source": "bench",
-                    "latency_method": "host_serial_first_byte",
+                    "latency_method": lat_method,
                     "energy_method": "not_measured",
                 })
 

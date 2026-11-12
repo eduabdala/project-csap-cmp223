@@ -1,6 +1,6 @@
 ---
 marp: true
-theme: inf-ufrgs
+theme: inf-ufrgs-claro
 style: @import 'inf-ufrgs-claro.css';
 paginate: true
 _paginate: false

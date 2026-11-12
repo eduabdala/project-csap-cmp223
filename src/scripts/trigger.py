@@ -311,14 +311,14 @@ def decode_la_pulses(raw_bytes: bytes, samplerate: int) -> tuple[int, list[dict]
             dur_ms = (idx - start_idx) * 1000.0 / samplerate
             pulses.append((t_start, dur_ms))
 
-    # Classifica grupos: pulsos curtos (~1..4 ms) são id_pulses, pulsos longos (>15 ms) são janelas MEASURE
+    # Classifica grupos: pulsos curtos (~3 ms) são id_pulses; o pulso seguinte (>=0.01 ms) é a janela MEASURE
     events: list[dict] = []
     id_count = 0
+    op_map = {1: "K (KeyGen)", 2: "E (Encaps)", 3: "D (Decaps)", 4: "M (MsgCrypt)"}
     for t_start, dur_ms in pulses:
-        if 0.5 <= dur_ms <= 8.0:
+        if 2.0 <= dur_ms <= 5.5:
             id_count += 1
-        elif dur_ms > 15.0:
-            op_map = {1: "K (KeyGen)", 2: "E (Encaps)", 3: "D (Decaps)", 4: "M (MsgCrypt)"}
+        elif id_count > 0 and dur_ms >= 0.01:
             events.append(
                 {
                     "id_pulses": id_count,
@@ -754,6 +754,11 @@ def main() -> int:
                         f"{idx:<4} {ev['op']:<18} {ev['t_start_s']:>12.4f} {ev['width_ms']:>20.3f} {cycles:>16,}"
                     )
                 print("=" * 72)
+                # Associa medição pura do analisador aos registros de telemetria
+                for r, ev in zip(results, la_events):
+                    r["t_la_ms"] = round(ev["width_ms"], 3)
+                    r["cycles_la"] = int(round(ev["width_ms"] * 20_000))
+                    r["la_channel"] = f"D{active_ch}"
 
         if is_battery:
             print("\n" + "=" * 72)

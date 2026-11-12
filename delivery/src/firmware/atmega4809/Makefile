@@ -74,12 +74,12 @@ TARGET   := firmware-$(ALG)-$(VARIANT)
 # ---- Flags --------------------------------------------------
 DFP_DIR   := $(firstword $(wildcard .dfp ../\.dfp))
 DFP_FLAGS := $(if $(DFP_DIR),-B $(DFP_DIR)/gcc/dev/$(MCU) -I $(DFP_DIR)/include,)
-CFLAGS   := -mmcu=$(MCU) $(DFP_FLAGS) -DF_CPU=$(F_CPU) -DBAUD_RATE=$(BAUD) $(SIZEDEFS) \
+CFLAGS   := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -mcall-prologues -DF_CPU=$(F_CPU) -DBAUD_RATE=$(BAUD) $(SIZEDEFS) \
             $(OPT) -std=gnu11 -Wall -Wextra \
             -ffunction-sections -fdata-sections \
             -funsigned-char -funsigned-bitfields
-ASFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -x assembler-with-cpp $(SIZEDEFS)
-LDFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARGET).map
+ASFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -x assembler-with-cpp $(SIZEDEFS)
+LDFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARGET).map
 
 # main.c + algorithm adapter + vendored C sources (+ .S in the asm variant).
 CSRC     := main.c $(ADAPTER) $(wildcard $(PQCDIR)/*.c $(PQCDIR)/*/*.c)

@@ -29,6 +29,5 @@
         "statusBar.inactiveBackground": "#d32f2f99"
     },
     "peacock.color": "#d32f2f99",
-    "robotcode.disableExtension": true,
-    "cmake.sourceDirectory": "/home/eduabdala/git/project-cspa-cmp223/src/firmware/rp2040"
+    "robotcode.disableExtension": true
 }
