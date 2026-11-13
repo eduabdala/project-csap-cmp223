@@ -145,7 +145,7 @@ def build_delivery_tgz(out_tgz="delivery.tgz"):
                 if len(parts) == 4 and parts[:3] == ("delivery", "slides", "figures") and fname.endswith(".png"):
                     continue
                 if fname.startswith("la_") and fname.endswith(".csv"):
-                    data = _compact_la_csv_bytes(fpath.read_bytes(), fname == "la_kyber512_asm_O3_20MHz.csv")
+                    data = _compact_la_csv_bytes(fpath.read_bytes(), fname in ("la_kyber512_asm_O3_20MHz.csv", "la_kyber512_asm_O3_20MHz_b01.csv"))
                     ti = tar.gettarinfo(str(fpath), arcname=str(fpath))
                     ti.size = len(data)
                     tar.addfile(ti, io.BytesIO(data))
@@ -266,13 +266,14 @@ rule experiment:
         port=config.get("port", config.get("serial_port", "/dev/ttyACM0")),
         n=config.get("iterations", 30),
         seed=config.get("seed", 42),
-        tag=config.get("tag", "bench_campanha_completa_la_nix")
+        tag=config.get("tag", "bench_campanha_completa_la_nix"),
+        blocks=config.get("blocks", 5)
     shell:
         r"""
         {ENV_PREFIX} {PYTHON} src/analysis/run_experiment.py \
             --mode {params.mode} --port {params.port} \
             --alg all --variants asm ref --opts O3 Os --clocks 20 \
-            -n {params.n} --seed {params.seed} \
+            -n {params.n} --seed {params.seed} --blocks {params.blocks} \
             --tag {params.tag}
         {ENV_PREFIX} {PYTHON} src/analysis/design.py --config src/analysis/config.yaml --out results/processed/design.csv
         {ENV_PREFIX} {PYTHON} src/analysis/catalog.py
@@ -291,15 +292,40 @@ rule bench:
         port=config.get("port", config.get("serial_port", "/dev/ttyACM0")),
         n=config.get("iterations", 30),
         seed=config.get("seed", 42),
-        tag=config.get("tag", "bench_campanha_completa_la_nix")
+        tag=config.get("tag", "bench_campanha_completa_la_nix"),
+        blocks=config.get("blocks", 5)
     shell:
         r"""
         {ENV_PREFIX} {PYTHON} src/analysis/run_experiment.py \
             --mode bench --port {params.port} \
             --alg all --variants asm ref --opts O3 Os --clocks 20 \
-            -n {params.n} --seed {params.seed} \
+            -n {params.n} --seed {params.seed} --blocks {params.blocks} \
             --tag {params.tag}
         {ENV_PREFIX} {PYTHON} src/analysis/catalog.py
+        """
+
+# ---- 7b. Campanha complementar sem otimização: -O0 vs. controles -O3 na mesma sessão ----
+# As configurações que não compilam em -O0 (Flash ou asm do micro-ecc) ficam em
+# raw/build_failures.csv; o -O3 delas é pulado (--drop-unpaired). Um bloco que trave
+# (ex.: estouro de pilha) descarta só a sua configuração (--keep-going).
+rule experiment_O0:
+    params:
+        port=config.get("port", config.get("serial_port", "/dev/ttyACM0")),
+        n=config.get("iterations", 30),
+        seed=config.get("seed", 42),
+        blocks=config.get("blocks", 5)
+    shell:
+        r"""
+        {ENV_PREFIX} {PYTHON} src/analysis/run_experiment.py \
+            --mode bench --port {params.port} \
+            --alg all --variants asm ref --opts O0 O3 --clocks 20 \
+            -n {params.n} --seed {params.seed} --blocks {params.blocks} \
+            --skip-unbuildable --drop-unpaired --keep-going \
+            --tag bench_O0_vs_O3 || echo "!! campanha -O0 incompleta (veja schedule.json)"
+        {ENV_PREFIX} {PYTHON} src/analysis/catalog.py
+        cp data/experiments/catalog.csv delivery/data/experiments/catalog.csv
+        {ENV_PREFIX} {PYTHON} src/analysis/prepare.py
+        quarto render src/analysis/analise.qmd
         """
 
 # ---- 8. Limpeza de todos os artefatos derivados para testar ou commitar do zero ----

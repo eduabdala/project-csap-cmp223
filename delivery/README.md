@@ -31,7 +31,11 @@ snakemake -j1              # Executa todo o DAG a partir dos dados brutos (catá
 snakemake -j1 experiment   # Roda o EXPERIMENTO COMPLETO na bancada (MCU + LA) + atualiza catálogo, caderno e slides
 snakemake -j1 firmware     # Compila os 12 firmwares bare-metal (.elf e .hex) do ATmega4809
 ```
-*(Você também pode customizar parâmetros da coleta via CLI, ex.: `snakemake -j1 experiment --config port=/dev/ttyACM0 iterations=30 tag=minha_campanha`).*
+*(Você também pode customizar parâmetros da coleta via CLI, ex.: `snakemake -j1 experiment --config port=/dev/ttyACM0 iterations=30 blocks=5 tag=minha_campanha`).*
+
+**Campanha complementar sem otimização (`-O0`):** `snakemake -j1 experiment_O0` mede `-O0` e controles `-O3` das mesmas configurações, em blocos sorteados na mesma sessão. Kyber-512 `ref` e CTRU-Light `ref` não cabem nos 48 KB de Flash em `-O0`, e o ECDH `asm` não compila (o *assembly* do micro-ecc exige o registrador `Y`, reservado como *frame pointer* em `-O0`); essas configurações são registradas em `raw/build_failures.csv` e puladas (`--skip-unbuildable --drop-unpaired`). Um bloco que trave (ex.: estouro de pilha) descarta só a sua configuração (`--keep-going`). O resultado fica na seção 10 do caderno (`cmp_O0_vs_O3.csv`, `O0_viabilidade.csv`, figura `O0_vs_O3`).
+
+**Aleatorização em blocos:** as `-n` repetições de cada uma das 12 configurações são divididas em `--blocks` blocos (padrão 5 no Snakefile, 1 na linha de comando) e a ordem de todos os blocos é sorteada com `--seed`. Cada bloco regrava a Flash (12 × 5 = 60 gravações por campanha); dentro do bloco a cadeia K→E→D→M é mantida. O `schedule.json` registra o plano e o status de cada bloco, e os arquivos brutos de cada bloco levam o sufixo `_bNN`.
 
 ### Com Make (atalho direto com ou sem Snakemake)
 ```bash
@@ -61,7 +65,7 @@ Com o Arduino Nano Every (`/dev/ttyACM0`) e o Analisador Lógico conectados no L
 ```bash
 nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
   python3 src/analysis/run_experiment.py --mode bench --port /dev/ttyACM0 \
-    --alg all --variants asm ref --opts O3 Os --clocks 20 -n 30 --seed 42 \
+    --alg all --variants asm ref --opts O3 Os --clocks 20 -n 30 --seed 42 --blocks 5 \
     --tag bench_campanha_completa_la_nix && \
   python3 src/analysis/catalog.py && \
   python3 src/analysis/prepare.py && \
@@ -132,7 +136,7 @@ npm run html    # -> results/slides/*.html (opcional)
 ```bash
 nix develop
 python3 src/analysis/run_experiment.py --mode bench --port /dev/ttyACM0 \
-    --alg all --variants asm ref --opts O3 Os --clocks 20 -n 30 --seed 42 \
+    --alg all --variants asm ref --opts O3 Os --clocks 20 -n 30 --seed 42 --blocks 5 \
     --tag bench_full_pqc_campaign
 python3 src/analysis/catalog.py
 ```

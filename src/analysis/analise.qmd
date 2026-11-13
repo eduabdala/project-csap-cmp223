@@ -168,7 +168,11 @@ dados (pulsos acima de 50 ms são operações; os curtos, antes de cada operaç�
 identificam qual operação vem a seguir).
 
 ```{r oscilograma}
-la <- read_csv(file.path(DIRS$exp, LA_EXP, "raw", "la_kyber512_asm_O3_20MHz.csv"),
+# Em campanhas com blocos (--blocks > 1) há um CSV por bloco (_b01, _b02, ...);
+# a forma de onda usa o primeiro bloco.
+la_arq <- list.files(file.path(DIRS$exp, LA_EXP, "raw"),
+                     pattern = "^la_kyber512_asm_O3_20MHz(_b\\d+)?\\.csv$", full.names = TRUE)
+la <- read_csv(sort(la_arq)[[1]],
                comment = "#", col_types = "ddi-", show_col_types = FALSE) |>
   filter(t_s <= 1.35) |>
   mutate(t_ms = t_s * 1000)
@@ -255,7 +259,7 @@ deriva ao longo da bateria. Cada operação tem seu próprio eixo y, porque o
 ```{r deriva}
 deriva <- df |>
   filter(algorithm == "kyber512", variant == "asm", optimization == "-O3") |>
-  group_by(op) |> mutate(ordem = row_number()) |> ungroup()
+  mutate(ordem = repetition)
 
 # Regressão linear de deriva por operação via tidyr::nest() + broom::tidy()
 deriva_reg <- deriva |>
@@ -273,12 +277,42 @@ fig_deriva <- function() {
                aes(yintercept = m), colour = "grey60", linewidth = 0.3, linetype = "dashed") +
     geom_point(size = 0.7, colour = PAL[["Kyber-512"]]) +
     facet_wrap(~op, nrow = 1, scales = "free_y") +
-    scale_x_continuous(breaks = c(1, 10, 20, 30)) +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 4)) +
     scale_y_continuous(labels = \(x) br(x, 2)) +
     labs(x = "Ordem de execução dentro da operação",
          y = "Latência no PA0 (ms)")
 }
 mostrar(salvar(fig_deriva, "drift_kyber_asm", alt = 1.7))
+```
+
+A ordem dos blocos (`block_order`) é sorteada pelo `run_experiment.py`
+(`--blocks`). Quando cada configuração tem mais de um bloco, a regressão de
+$\log T$ sobre `block_order` dentro de cada configuração estima a deriva ao
+longo da campanha (em % por posição de bloco). Com um bloco por configuração,
+a posição na campanha fica confundida com a própria configuração e o teste
+não é possível.
+
+```{r efeito-bloco}
+blocos_por_config <- df |> distinct(across(all_of(c("algorithm", "variant", "optimization"))), block) |>
+  count(algorithm, variant, optimization) |> pull(n) |> min()
+if (blocos_por_config > 1) {
+  efeito_bloco <- df |>
+    filter(operation != "msgcrypt") |>
+    nest(dados = c(-algorithm, -variant, -optimization, -operation)) |>
+    mutate(ajuste = map(dados, \(d) broom::tidy(lm(log(t_exec_ms) ~ block_order, data = d)))) |>
+    select(-dados) |>
+    unnest(ajuste) |>
+    filter(term == "block_order") |>
+    transmute(algorithm, variant, optimization, operation,
+              deriva_pct_por_bloco = round(100 * (exp(estimate) - 1), 4),
+              p_valor = signif(p.value, 3),
+              p_holm = signif(p.adjust(p.value, "holm"), 3))
+  write_csv(efeito_bloco, file.path(DIRS$out, "block_drift.csv"))
+  efeito_bloco
+} else {
+  cat("Campanha", LA_EXP, "tem 1 bloco por configuração: ordem de execução",
+      "confundida com a configuração (sem teste de efeito de bloco).\n")
+}
 ```
 
 ## 4. Sumário estatístico (média, IC 95% t-Student, mediana, IQR e pilha)
@@ -304,6 +338,7 @@ summ |> mutate(across(where(is.double), \(x) round(x, 2)))
 
 ```{r flash}
 fl <- flash |>
+  filter(optimization %in% c("-O3", "-Os")) |>  # -O0 fica na seção 10
   mutate(alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
          variant = factor(variant, levels = c("asm", "ref")),
          opt = factor(optimization, levels = c("-O3", "-Os")))
@@ -765,4 +800,93 @@ if (dir.exists(art_tab)) {
 }
 cat(readLines(file.path(DIRS$tab, "results.tex")), sep = "\n")
 cat(readLines(file.path(DIRS$tab, "anova.tex")), sep = "\n")
+```
+
+## 10. Experimento complementar sem otimização (`-O0`)
+
+Com `-O0`, três das seis combinações algoritmo × implementação não compilam:
+o Kyber-512 e o CTRU-Light `ref` passam dos 48 KB de Flash, e o *assembly*
+embutido do micro-ecc (ECDH `asm`) exige o registrador `Y`, que em `-O0` fica
+reservado como *frame pointer*. Por isso `-O0` não entra no fatorial das
+seções 7 e 8. Ele é medido numa campanha à parte
+(`snakemake -j1 experiment_O0`), com as configurações que compilam em `-O0` e
+`-O3` sorteadas em blocos na mesma sessão. A razão `-O0`/`-O3` usa o mesmo
+teste de Welch sobre $\log T$ da seção 7.
+
+```{r O0-viabilidade}
+bf_o0 <- read_csv(file.path(DIRS$out, "build_failures.csv"),
+                  col_types = cols(.default = col_character())) |>
+  filter(optimization == "-O0") |>
+  select(algorithm, variant, reason)
+fl_opt <- flash |>
+  filter(optimization %in% c("-O0", "-O3")) |>
+  select(algorithm, variant, optimization, flash_b) |>
+  pivot_wider(names_from = optimization, values_from = flash_b, names_prefix = "flash_b")
+viab_o0 <- expand_grid(algorithm = names(LABEL), variant = c("asm", "ref")) |>
+  left_join(fl_opt, by = c("algorithm", "variant")) |>
+  left_join(bf_o0, by = c("algorithm", "variant"))
+if (!"flash_b-O0" %in% names(viab_o0)) viab_o0$`flash_b-O0` <- NA_real_
+viab_o0 <- viab_o0 |>
+  transmute(
+    algoritmo = LABEL[algorithm], variante = variant,
+    situacao_O0 = case_when(!is.na(`flash_b-O0`) ~ "compila",
+                            !is.na(reason) ~ reason,
+                            TRUE ~ "sem campanha -O0"),
+    flash_kb_O0 = round(`flash_b-O0` / 1024, 1),
+    flash_kb_O3 = round(`flash_b-O3` / 1024, 1)
+  )
+write_csv(viab_o0, file.path(DIRS$out, "O0_viabilidade.csv"), na = "")
+viab_o0
+```
+
+```{r O0-latencia}
+o0 <- ler("bench_O0_tidy.csv")
+tem_o0 <- nrow(o0) > 0 && all(c("-O0", "-O3") %in% o0$optimization)
+if (!tem_o0) {
+  cat("Ainda não há campanha -O0 com controles -O3 em data/experiments/.\n")
+} else {
+  razao_o0 <- o0 |>
+    filter(operation != "msgcrypt") |>
+    nest(dados = c(-algorithm, -variant, -operation)) |>
+    filter(map_lgl(dados, \(d) sum(d$optimization == "-O0") > 1 &&
+                                 sum(d$optimization == "-O3") > 1)) |>
+    mutate(
+      r = map(dados, \(d) comparar(d$t_exec_ms[d$optimization == "-O3"],
+                                   d$t_exec_ms[d$optimization == "-O0"])),
+      n_O0 = map_int(dados, \(d) sum(d$optimization == "-O0")),
+      n_O3 = map_int(dados, \(d) sum(d$optimization == "-O3")),
+      media_O0_ms = map_dbl(dados, \(d) mean(d$t_exec_ms[d$optimization == "-O0"])),
+      media_O3_ms = map_dbl(dados, \(d) mean(d$t_exec_ms[d$optimization == "-O3"])),
+      pilha_O0_b = map_dbl(dados, \(d) max(d$stack_peak[d$optimization == "-O0"])),
+      pilha_O3_b = map_dbl(dados, \(d) max(d$stack_peak[d$optimization == "-O3"]))
+    ) |>
+    select(-dados) |>
+    unnest(r)
+  write_csv(razao_o0 |> rename(`razao_-O0/-O3` = razao),
+            file.path(DIRS$out, "cmp_O0_vs_O3.csv"))
+  print(razao_o0 |> mutate(across(where(is.double), \(x) signif(x, 4))))
+
+  # Configurações que compilaram mas não completaram a coleta (ex.: estouro de pilha)
+  print(o0 |> count(algorithm, variant, optimization, name = "n_obs"))
+
+  fig_O0 <- function() {
+    d <- razao_o0 |>
+      mutate(alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
+             op = factor(OP_ROTULO[operation], levels = OP_ROTULO[1:3]),
+             config = fct_reorder(paste0(alg, " (", variant, ")"), as.integer(alg)))
+    ggplot(d, aes(op, razao, colour = alg)) +
+      geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50", linewidth = 0.3) +
+      geom_errorbar(aes(ymin = ic_lo, ymax = ic_hi), width = 0.2, linewidth = 0.35) +
+      geom_point(size = 1.6) +
+      geom_text(aes(label = paste0(br(razao, 2), tx("$\\times$", "\u00d7"))),
+                vjust = -1, size = fs(0.75), show.legend = FALSE) +
+      facet_wrap(~config, nrow = 1) +
+      scale_colour_manual(values = PAL, guide = "none") +
+      scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.15)),
+                         labels = rotulo_br(1)) +
+      labs(x = NULL, y = "Razão de latência -O0 / -O3")
+  }
+  mostrar(salvar(fig_O0, "O0_vs_O3", alt = 2.0, slide = "slide_O0_vs_O3.png",
+                 slide_larg = 11, slide_alt = 4.5))
+}
 ```

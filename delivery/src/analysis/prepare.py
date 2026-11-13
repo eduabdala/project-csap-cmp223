@@ -6,11 +6,15 @@ analise.ipynb, separada para que a estatística, as tabelas e as figuras fiquem
 no caderno Quarto.
 
 Saídas (results/processed/):
-  bench_history_tidy.csv   todas as observações das campanhas de bancada
+  bench_history_tidy.csv   todas as observações das campanhas de bancada, com
+                           run_order, block, block_order e repetition
+                           (reconstruídos dos timestamps nas campanhas antigas)
   campaigns_history.csv    uma linha por campanha (volume e instrumentação)
   bench_tidy.csv           campanha #17 (analisador lógico), base da análise
   la_vs_uart_overhead.csv  pulso no PA0 vs. tempo serial no host (asm -O3)
-  flash_sizes.csv          Flash ocupada, lida dos .hex gravados
+  flash_sizes.csv          Flash ocupada, lida dos .hex gravados (todas as otimizações)
+  bench_O0_tidy.csv        campanha complementar sem otimização (-O0 + controles -O3)
+  build_failures.csv       configurações que não compilaram (ex.: -O0 estoura a Flash)
 
 Uso (a partir da raiz do repositório):
   python src/analysis/prepare.py
@@ -31,10 +35,11 @@ LA_EXP = "exp_20261108_155653_bench_campanha_completa_la_nix_8289"
 OPS = {"K": "keygen", "E": "encaps", "D": "decaps", "M": "msgcrypt"}
 TELEMETRY = re.compile(
     r"telemetry_(?P<alg>kyber512|ctru-light|ecdh)_(?P<variant>asm|ref)"
-    r"(?:_(?P<opt>O3|Os)_(?P<clk>[\d.]+)MHz)?\.json"
+    r"(?:_(?P<opt>O[0-3sgz])_(?P<clk>[\d.]+)MHz)?(?:_b(?P<block>\d+))?\.json"
 )
+CONFIG = ["algorithm", "variant", "optimization", "clock_mhz"]
 HEX = re.compile(
-    r"firmware-(?P<alg>kyber512|ctru-light|ecdh)-(?P<variant>asm|ref)-[\d.]+MHz-(?P<opt>O3|Os)\.hex"
+    r"firmware-(?P<alg>kyber512|ctru-light|ecdh)-(?P<variant>asm|ref)-[\d.]+MHz-(?P<opt>O[0-3sgz])\.hex"
 )
 FLASH_TOTAL_B = 49152
 
@@ -68,6 +73,7 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                 t_la = float(r["t_pa0_ms"]) if pd.notna(r.get("t_pa0_ms")) else np.nan
                 rows.append({
                     **r, "experiment": e, "campaign_idx": idx, "seq": i,
+                    "stack_peak": r.get("stack_peak_b"),
                     "t_exec_ms": t_exec, "t_la_ms": t_la,
                     "latency_ms": t_la if not np.isnan(t_la) else t_exec,
                 })
@@ -90,6 +96,7 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                         **r, "experiment": e, "campaign_idx": idx, "seq": i,
                         "algorithm": m["alg"], "variant": m["variant"],
                         "optimization": opt, "clock_mhz": float(m["clk"] or 20),
+                        "block": int(m["block"]) if m["block"] else 1,
                         "operation": OPS[r["cmd"]], "t_exec_ms": t_exec, "t_la_ms": t_la,
                         "latency_ms": t_la if not np.isnan(t_la) else t_exec,
                     })
@@ -108,7 +115,39 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             "configs": n_configs, "algoritmos": ", ".join(sorted(algs_e)),
             "flags": ", ".join(sorted(opts_e)), "observacoes": n_e, "instrumentacao": metodo,
         })
-    return pd.DataFrame(rows), pd.DataFrame(campaigns)
+    return add_execution_order(pd.DataFrame(rows)), pd.DataFrame(campaigns)
+
+
+def add_execution_order(hist: pd.DataFrame) -> pd.DataFrame:
+    """Garante run_order, block, block_order e repetition em todas as campanhas.
+
+    Campanhas com observations.csv já trazem essas colunas. Nas que só têm
+    telemetry_*.json, elas são reconstruídas a partir dos timestamps:
+      run_order    ordem global de execução dentro da campanha
+      block        bloco da configuração (sufixo _bNN do arquivo; 1 se não houver)
+      block_order  posição do bloco na campanha (ordem do 1º timestamp do bloco)
+      repetition   repetição da operação dentro da configuração, somando os blocos
+    """
+    cols = ["run_order", "block", "block_order", "repetition"]
+    for col in cols:
+        if col not in hist:
+            hist[col] = np.nan
+    falta = hist.groupby("experiment")[cols].transform(lambda s: s.isna().any()).any(axis=1)
+    if falta.any():
+        h = hist.loc[falta].copy()
+        if h.run_order.isna().any():
+            h["_ts"] = pd.to_datetime(h.timestamp, format="ISO8601")
+            h = h.sort_values(["experiment", "_ts"], kind="stable")
+            h["run_order"] = h.groupby("experiment").cumcount() + 1
+        h = h.sort_values(["experiment", "run_order"], kind="stable")
+        h["block"] = h.block.fillna(1)
+        inicio = h.groupby(["experiment", *CONFIG, "block"])["run_order"].transform("min")
+        h["block_order"] = h.assign(_ini=inicio).groupby("experiment")["_ini"].rank(method="dense")
+        h["repetition"] = h.groupby(["experiment", *CONFIG, "operation"]).cumcount() + 1
+        hist.loc[h.index, cols] = h[cols]
+    for col in cols:
+        hist[col] = hist[col].astype("Int64")
+    return hist
 
 
 def hex_bytes(path: str) -> int:
@@ -156,14 +195,30 @@ def main() -> None:
     hist.to_csv(out / "bench_history_tidy.csv", index=False)
     campaigns.to_csv(out / "campaigns_history.csv", index=False)
 
-    # Seleciona automaticamente a campanha mais recente com LA completo (ou LA_EXP)
-    la_cands = hist[hist.t_la_ms.notna()].groupby("experiment")["algorithm"].nunique()
-    la_full = la_cands[la_cands >= 3].index.tolist()
-    la_exp = sorted(la_full)[-1] if la_full else LA_EXP
+    # Campanha principal: a mais recente com LA, os 3 algoritmos e o fatorial -O3 x -Os
+    # (sem -O0). A campanha complementar -O0 (com controles -O3) vai para bench_O0_tidy.csv.
+    la = hist[hist.t_la_ms.notna()]
+    perfil = la.groupby("experiment").agg(
+        n_alg=("algorithm", "nunique"), opts=("optimization", lambda s: set(s)))
+    principal = perfil[(perfil.n_alg >= 3)
+                       & perfil.opts.map(lambda o: {"-O3", "-Os"} <= o and "-O0" not in o)]
+    la_exp = sorted(principal.index)[-1] if len(principal) else LA_EXP
 
     df = hist[hist.experiment == la_exp].copy()
     df["t_exec_ms"] = df["t_la_ms"]
     df.to_csv(out / "bench_tidy.csv", index=False)
+
+    o0_exps = sorted(perfil[perfil.opts.map(lambda o: "-O0" in o)].index)
+    o0 = hist[hist.experiment == o0_exps[-1]].copy() if o0_exps else hist.iloc[0:0].copy()
+    o0["t_exec_ms"] = o0["t_la_ms"]
+    o0.to_csv(out / "bench_O0_tidy.csv", index=False)
+
+    falhas = sorted(glob.glob(str(exp_dir / "exp_*" / "raw" / "build_failures.csv")))
+    bf = (pd.concat([pd.read_csv(f).assign(src=Path(f).parts[-3]) for f in falhas])
+          .drop_duplicates(["algorithm", "variant", "optimization"], keep="last")
+          if falhas else pd.DataFrame(columns=["algorithm", "variant", "optimization",
+                                               "clock_mhz", "reason", "src"]))
+    bf.to_csv(out / "build_failures.csv", index=False)
 
     sub = hist[(hist.experiment == la_exp) & (hist.variant == "asm") & (hist.optimization == "-O3")]
     overhead = sub.groupby(["algorithm", "operation"]).agg(
@@ -177,7 +232,7 @@ def main() -> None:
     load_flash(exp_dir).to_csv(out / "flash_sizes.csv", index=False)
 
     print(f"[prepare] {len(campaigns)} campanhas, {len(hist)} observações; "
-          f"campanha LA: {len(df)} observações -> {out}")
+          f"campanha LA: {len(df)} observações; campanha -O0: {len(o0)} observações -> {out}")
 
 
 if __name__ == "__main__":

@@ -8,8 +8,11 @@ Adheres to Raj Jain's "The Art of Computer Systems Performance Analysis":
 
 Workflow for each generated experiment:
   1. Generates a self-contained folder under `data/experiments/exp_<timestamp>_<id>/`.
-  2. Creates a randomized execution plan using the specified seed.
-  3. Iterates through combinations:
+  2. Creates a randomized block plan using the specified seed: the N repetitions of
+     each configuration are split into --blocks blocks and the order of all blocks
+     is shuffled (one Flash write per block). schedule.json records the plan and the
+     status of every block.
+  3. Iterates through the shuffled blocks:
        a. Builds the target firmware (avr-gcc / make) for the combination factors.
        b. Flashes the MCU (/dev/ttyACM0 via avrdude UPDI) if in hardware mode.
        c. Triggers measurement & telemetry collection (trigger.py / serial).
@@ -33,6 +36,7 @@ import json
 import math
 import os
 import random
+import re
 import subprocess
 import sys
 import time
@@ -102,7 +106,8 @@ def build_firmware(alg, variant, opt, clock_mhz, exp_dir):
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
         print(f"!! Build failed:\n{res.stderr}", file=sys.stderr)
-        return False, None
+        # Em caso de falha, o 2º valor é o motivo (ex.: estouro de Flash em -O0).
+        return False, build_error_reason(res.stdout + "\n" + res.stderr)
     
     # Copy build artifacts to experiment folder
     hex_src = f"src/firmware/atmega4809/build/firmware-{alg}-{variant}.hex"
@@ -111,6 +116,18 @@ def build_firmware(alg, variant, opt, clock_mhz, exp_dir):
         import shutil
         shutil.copyfile(hex_src, hex_dst)
     return True, hex_dst
+
+def build_error_reason(log):
+    """Resume o motivo da falha de compilação/ligação numa linha."""
+    lines = [l.strip() for l in log.splitlines()]
+    for l in lines:
+        m = re.search(r"region [`']?text'? overflowed by (\d+) bytes", l)
+        if m:
+            return f"flash_overflow: excede a Flash em {m.group(1)} B"
+    for l in lines:
+        if "error:" in l:
+            return "compile_error: " + l.split("error:", 1)[1].strip()[:200]
+    return "build_error"
 
 def flash_firmware(hex_path, port="/dev/ttyACM0", max_retries=3):
     """Flash firmware to ATmega4809 using avrdude over jtag2updi with 1200bps touch and timeout."""
@@ -138,15 +155,21 @@ def flash_firmware(hex_path, port="/dev/ttyACM0", max_retries=3):
         time.sleep(1.0)
     return False
 
-def run_hardware_collection(port, repeats, exp_dir, combo, use_la=False):
-    """Call trigger.py to execute battery BM and record timing and telemetry from the board."""
-    prefix = f"{combo['alg']}_{combo['variant']}_{combo['opt'].lstrip('-')}_{int(combo['clock_mhz'])}MHz"
+def run_hardware_collection(port, repeats, exp_dir, combo, use_la=False, suffix=""):
+    """Call trigger.py to execute battery BM and record timing and telemetry from the board.
+
+    `suffix` (ex.: "_b03") separa os arquivos brutos de cada bloco da mesma configuração.
+    """
+    prefix = f"{combo['alg']}_{combo['variant']}_{combo['opt'].lstrip('-')}_{int(combo['clock_mhz'])}MHz{suffix}"
     json_path = os.path.join(exp_dir, "raw", f"telemetry_{prefix}.json")
     log_path = os.path.join(exp_dir, "raw", f"console_{prefix}.log")
     la_csv = os.path.join(exp_dir, "raw", f"la_{prefix}.csv")
 
     # Dynamic timeout: ECDH pure C requires ~14s for Encaps (2x 256-bit scalar mult on 8-bit AVR)
     timeout_sec = 35.0 if (combo["alg"] == "ecdh" and combo["variant"] == "ref") else 15.0
+    # Sem otimização o código C fica várias vezes mais lento (ECDH ref -O3 já leva ~14 s no Encaps).
+    if combo["opt"] == "-O0":
+        timeout_sec *= 4
 
     cmd = [
         sys.executable, "src/scripts/trigger.py",
@@ -319,6 +342,8 @@ def write_markdown_report(exp_dir, args, summary_rows, raw_records, total_trials
         f.write(f"- **Execution Mode:** `{args.mode}`\n")
         f.write(f"- **Randomization Seed (Jain Ch. 11.4):** `{args.seed}`\n")
         f.write(f"- **Replications per Cell ($N$):** `{args.n}`\n")
+        f.write(f"- **Blocks per Configuration (randomized order):** `{args.blocks}`\n")
+        f.write(f"- **Planned Trials:** `{total_trials}`\n")
         f.write(f"- **Total Raw Observations Recorded:** `{len(raw_records)}`\n\n")
         if args.mode == "sim":
             f.write("> **WARNING: SIMULATED DATA.** Every value in this report comes from a "
@@ -369,6 +394,44 @@ def write_markdown_report(exp_dir, args, summary_rows, raw_records, total_trials
 
     print(f">> [REPORT] Markdown summary written to: {report_path}")
 
+def combo_key(c):
+    return (c["alg"], c["variant"], c["opt"], c["clock_mhz"])
+
+def block_sizes(n, n_blocks):
+    """Divide n repetições em n_blocks blocos o mais iguais possível (ex.: 32/5 -> 7,7,6,6,6)."""
+    base, extra = divmod(n, n_blocks)
+    return [base + (1 if b < extra else 0) for b in range(n_blocks)]
+
+def build_block_plan(combos, n, n_blocks, rng):
+    """Projeto em blocos completos aleatorizados (Jain, cap. 11.4).
+
+    Cada configuração (firmware) é dividida em `n_blocks` blocos de repetições e
+    a ordem de TODOS os blocos é sorteada. Trocar de configuração exige regravar
+    a Flash, então a aleatorização é feita no nível do bloco (len(combos) * n_blocks
+    gravações), não no nível da tentativa. Dentro do bloco a cadeia K->E->D->M é
+    mantida, porque cada operação depende da saída da anterior.
+    """
+    sizes = block_sizes(n, n_blocks)
+    plan = [
+        {"alg": c["alg"], "variant": c["variant"], "opt": c["opt"], "clock_mhz": c["clock_mhz"],
+         "block": b + 1, "n_reps": sizes[b]}
+        for c in combos for b in range(n_blocks)
+    ]
+    rng.shuffle(plan)
+    for i, blk in enumerate(plan, start=1):
+        blk["block_order"] = i
+        blk["status"] = "pending"
+        blk["started_at"] = None
+        blk["finished_at"] = None
+    return plan
+
+def write_schedule(path, plan):
+    """Grava o plano executado (atualizado a cada bloco, para diagnosticar campanhas interrompidas)."""
+    keys = ["block_order", "alg", "variant", "opt", "clock_mhz", "block", "n_reps",
+            "status", "started_at", "finished_at"]
+    with open(path, "w") as f:
+        json.dump([{k: blk[k] for k in keys} for blk in plan], f, indent=2)
+
 def main():
     ap = argparse.ArgumentParser(description="Automated Experiment Runner & Directory Generator")
     ap.add_argument("--mode", choices=["sim", "bench"], default="sim",
@@ -390,7 +453,22 @@ def main():
                     help="Optimization levels: O3, Os (default: O3)")
     ap.add_argument("--clocks", nargs="+", type=float, default=[20.0],
                     help="Clock frequencies in MHz (default: 20.0)")
+    ap.add_argument("--blocks", type=int, default=1,
+                    help="Blocos por configuração: as -n repetições são divididas em BLOCKS blocos e a "
+                         "ordem de todos os blocos é sorteada com --seed (custo: configs x BLOCKS gravações "
+                         "da Flash). Default 1 = um bloco por configuração, em ordem sorteada.")
+    ap.add_argument("--skip-unbuildable", action="store_true",
+                    help="Configurações que não compilam (ex.: -O0 estoura a Flash) são registradas em "
+                         "raw/build_failures.csv e puladas, em vez de abortar a campanha.")
+    ap.add_argument("--drop-unpaired", action="store_true",
+                    help="Com --skip-unbuildable: se um algoritmo/variante não compila em algum nível de "
+                         "otimização, pula também os outros níveis dele (sem par para comparar).")
+    ap.add_argument("--keep-going", action="store_true",
+                    help="Se um bloco falhar (ex.: estouro de pilha em -O0), pula os blocos restantes da "
+                         "mesma configuração e continua com as outras, em vez de encerrar a campanha.")
     args = ap.parse_args()
+    if not 1 <= args.blocks <= args.n:
+        ap.error(f"--blocks deve estar entre 1 e -n ({args.n})")
 
     if args.mode == "bench" and not os.path.exists(args.port):
         print(f"!! [ERRO] Porta serial {args.port} não encontrada (Arduino Nano Every desconectado?).")
@@ -423,73 +501,128 @@ def main():
                 for c in clocks:
                     combos.append({"alg": a, "variant": v, "opt": o, "clock_mhz": c})
 
-    # 3. Create full randomized trial task list (Jain Ch. 11.4)
-    tasks = []
-    for combo in combos:
-        for op in ops:
-            for rep in range(1, args.n + 1):
-                tasks.append({
-                    "alg": combo["alg"],
-                    "variant": combo["variant"],
-                    "opt": combo["opt"],
-                    "clock_mhz": combo["clock_mhz"],
-                    "op": op,
-                    "rep": rep
-                })
-
+    # 3. Randomized complete block plan (Jain Ch. 11.4)
     rng = random.Random(args.seed)
-    rng.shuffle(tasks)
+    plan = build_block_plan(combos, args.n, args.blocks, rng)
+    total_trials = len(ops) * args.n * len(combos)
 
-    # 4. Save randomized trial schedule
+    # 4. Save the block schedule (rewritten after every block with its status)
     schedule_path = os.path.join(exp_dir, "schedule.json")
-    with open(schedule_path, "w") as f:
-        json.dump(tasks, f, indent=2)
-    print(f">> [SCHEDULE] Generated randomized schedule with {len(tasks)} trials -> {schedule_path}")
+    write_schedule(schedule_path, plan)
+    print(f">> [SCHEDULE] {len(plan)} blocos sorteados ({len(combos)} configs x {args.blocks} blocos, "
+          f"{total_trials} tentativas) -> {schedule_path}")
+    for blk in plan:
+        print(f"   {blk['block_order']:>3}. {blk['alg']:<10} {blk['variant']} {blk['opt']} "
+              f"bloco {blk['block']}/{args.blocks} ({blk['n_reps']} rodadas)")
 
     # 5. Execute builds and measurements
     raw_records = []
+    failed = False
+    rep_counter = {}  # (config, operação) -> repetições já coletadas, somando os blocos
     if args.mode == "sim":
-        print(f">> [SIMULATION] Executing {len(tasks)} trials with physical noise modeling...")
+        print(f">> [SIMULATION] Executing {total_trials} trials with physical noise modeling...")
         # Still compile the actual ELF/HEX into the folder to guarantee code integrity
         for combo in combos:
             build_firmware(combo["alg"], combo["variant"], combo["opt"], combo["clock_mhz"], exp_dir)
 
-        for trial_order, task in enumerate(tasks, start=1):
-            rec = simulate_trial(task, trial_order, rng)
-            raw_records.append(rec)
+        trial_order = 0
+        for blk in plan:
+            blk["started_at"] = datetime.datetime.now().isoformat()
+            for _ in range(blk["n_reps"]):
+                for op in ops:
+                    trial_order += 1
+                    k = (combo_key(blk), op)
+                    rep_counter[k] = rep_counter.get(k, 0) + 1
+                    task = {**blk, "op": op, "rep": rep_counter[k]}
+                    rec = simulate_trial(task, trial_order, rng)
+                    rec["block"] = blk["block"]
+                    rec["block_order"] = blk["block_order"]
+                    raw_records.append(rec)
+            blk["finished_at"] = datetime.datetime.now().isoformat()
+            blk["status"] = "ok"
+        write_schedule(schedule_path, plan)
     else:
-        # Hardware bench mode
+        # Hardware bench mode: compila todos os firmwares antes, depois percorre os blocos sorteados
         print(f">> [BENCH] Running live hardware execution on {args.port}...")
+        hex_files, build_failures = {}, []
         for combo in combos:
-            ok, hex_file = build_firmware(combo["alg"], combo["variant"], combo["opt"], combo["clock_mhz"], exp_dir)
-            if not ok:
+            ok, hex_or_reason = build_firmware(combo["alg"], combo["variant"], combo["opt"], combo["clock_mhz"], exp_dir)
+            if ok:
+                hex_files[combo_key(combo)] = hex_or_reason
+                continue
+            if not args.skip_unbuildable:
                 sys.exit(1)
-            if not flash_firmware(hex_file, port=args.port):
-                sys.exit(1)
-            ok_coll, parsed_runs = run_hardware_collection(args.port, args.n, exp_dir, combo, use_la=args.use_la)
+            print(f"!! [SKIP] {combo['alg']} {combo['variant']} {combo['opt']}: {hex_or_reason}", file=sys.stderr)
+            build_failures.append({"algorithm": combo["alg"], "variant": combo["variant"],
+                                   "optimization": combo["opt"], "clock_mhz": combo["clock_mhz"],
+                                   "reason": hex_or_reason})
+        if build_failures:
+            with open(os.path.join(exp_dir, "raw", "build_failures.csv"), "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(build_failures[0].keys()))
+                w.writeheader()
+                w.writerows(build_failures)
+        sem_par = {(b["algorithm"], b["variant"]) for b in build_failures} if args.drop_unpaired else set()
+        for blk in plan:
+            if combo_key(blk) not in hex_files:
+                blk["status"] = "skipped_build"
+            elif (blk["alg"], blk["variant"]) in sem_par:
+                blk["status"] = "skipped_unpaired"
+        write_schedule(schedule_path, plan)
+
+        op_map = {"K": "keygen", "E": "encaps", "D": "decaps", "M": "msgcrypt"}
+        failed_configs = set()
+        for blk in plan:
+            key = combo_key(blk)
+            if blk["status"] in ("skipped_build", "skipped_unpaired"):
+                continue
+            if key in failed_configs:
+                blk["status"] = "skipped_after_failure"
+                write_schedule(schedule_path, plan)
+                continue
+            print(f"\n>> [BLOCO {blk['block_order']}/{len(plan)}] {blk['alg']} {blk['variant']} {blk['opt']} "
+                  f"- bloco {blk['block']}/{args.blocks} ({blk['n_reps']} rodadas)")
+            blk["started_at"] = datetime.datetime.now().isoformat()
+            ok_coll, parsed_runs = False, []
+            if flash_firmware(hex_files[key], port=args.port):
+                suffix = f"_b{blk['block']:02d}" if args.blocks > 1 else ""
+                ok_coll, parsed_runs = run_hardware_collection(
+                    args.port, blk["n_reps"], exp_dir, blk, use_la=args.use_la, suffix=suffix)
+            blk["finished_at"] = datetime.datetime.now().isoformat()
+            blk["status"] = "ok" if ok_coll else "failed"
+            write_schedule(schedule_path, plan)
             if not ok_coll:
-                sys.exit(1)
+                failed = True
+                if args.keep_going:
+                    failed_configs.add(key)
+                    print(f"!! Bloco {blk['block_order']} falhou; os blocos restantes de {key} serão "
+                          f"pulados e a campanha continua.", file=sys.stderr)
+                    continue
+                # Interrompe, mas grava as tabelas dos blocos já coletados (veja schedule.json).
+                print(f"!! Bloco {blk['block_order']} falhou; campanha interrompida. "
+                      f"Os blocos anteriores serão salvos.", file=sys.stderr)
+                break
             # Create detailed observation records
-            op_map = {"K": "keygen", "E": "encaps", "D": "decaps", "M": "msgcrypt"}
-            rep_counter = {}
             for item in parsed_runs:
                 op_code = item.get("cmd", "")
                 op_name = op_map.get(op_code, item.get("op_name", "").lower())
-                rep_counter[op_name] = rep_counter.get(op_name, 0) + 1
+                k = (key, op_name)
+                rep_counter[k] = rep_counter.get(k, 0) + 1
                 has_la = item.get("t_la_ms") is not None
                 lat_ms = item["t_la_ms"] if has_la else item["t_exec_ms"]
                 tot_ms = item.get("t_total_ms", lat_ms)
-                clk = combo["clock_mhz"]
+                clk = blk["clock_mhz"]
                 cycles = item["cycles_la"] if has_la else int(round(lat_ms * clk * 1000))
                 lat_method = "saleae_logic_analyzer_gpio" if has_la else "host_serial_first_byte"
                 raw_records.append({
                     "run_order": len(raw_records) + 1,
-                    "repetition": rep_counter[op_name],
+                    "block": blk["block"],
+                    "block_order": blk["block_order"],
+                    "repetition": rep_counter[k],
                     "timestamp": item.get("timestamp", datetime.datetime.now().isoformat()),
-                    "algorithm": combo["alg"],
-                    "variant": combo["variant"],
-                    "optimization": combo["opt"],
-                    "clock_mhz": combo["clock_mhz"],
+                    "algorithm": blk["alg"],
+                    "variant": blk["variant"],
+                    "optimization": blk["opt"],
+                    "clock_mhz": blk["clock_mhz"],
                     "operation": op_name,
                     "latency_ms": lat_ms,
                     "latency_host_serial_ms": item["t_exec_ms"],
@@ -525,7 +658,8 @@ def main():
             w.writeheader()
             w.writerows(raw_records)
         obs_fields = [
-            "experiment", "run_order", "repetition", "algorithm", "variant",
+            "experiment", "timestamp", "run_order", "block_order", "block", "repetition",
+            "algorithm", "variant",
             "optimization", "clock_mhz", "operation", "t_pa0_ms", "t_uart_ms",
             "cycles_pa0", "stack_peak_b", "sram_headroom_pct", "payload_bytes",
             "kem_validated", "msg_validated", "status",
@@ -536,7 +670,10 @@ def main():
             for r in raw_records:
                 w.writerow({
                     "experiment": exp_name,
+                    "timestamp": r.get("timestamp"),
                     "run_order": r["run_order"],
+                    "block_order": r.get("block_order"),
+                    "block": r.get("block"),
                     "repetition": r["repetition"],
                     "algorithm": r["algorithm"],
                     "variant": r["variant"],
@@ -596,7 +733,13 @@ def main():
         shutil.copyfile(uni_png, f"{hist_prefix}.png")
 
     # 9. Write final markdown report
-    write_markdown_report(exp_dir, args, summary_rows, raw_records, len(tasks))
+    write_markdown_report(exp_dir, args, summary_rows, raw_records, total_trials)
+
+    if failed:
+        done = sum(b["status"] == "ok" for b in plan)
+        print(f"\n!! [INCOMPLETO] {done}/{len(plan)} blocos coletados ({len(raw_records)}/{total_trials} "
+              f"tentativas). Veja {schedule_path}.", file=sys.stderr)
+        sys.exit(1)
 
     print(f"\n{'='*75}")
     print(f">> [SUCCESS] Experiment finished completely!")
