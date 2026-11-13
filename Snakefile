@@ -39,37 +39,48 @@ FIRMWARE_HEX = [
     for opt in OPTS
 ]
 
-PROCESSED_CSVS = [
+PREPARE_CSVS = [
     "results/processed/bench_history_tidy.csv",
     "results/processed/campaigns_history.csv",
     "results/processed/bench_tidy.csv",
     "results/processed/la_vs_uart_overhead.csv",
-    "results/processed/summary_bench.csv",
     "results/processed/flash_sizes.csv",
-    "results/processed/anova_latency.csv",
 ]
+
+ANALYSIS_CSVS = [
+    "results/processed/summary_bench.csv",
+    "results/processed/anova_latency.csv",
+    "results/processed/emmeans_ref_vs_asm.csv",
+    "results/processed/cmp_ref_vs_asm.csv",
+    "results/processed/cmp_Os_vs_O3.csv",
+    "results/processed/cmp_kyber_vs_ctru.csv",
+    "results/processed/cmp_ecdh_vs_kyber.csv",
+    "results/processed/cmp_ecdh_vs_ctru.csv",
+]
+
+PROCESSED_CSVS = PREPARE_CSVS + ANALYSIS_CSVS
 
 LATEX_TABLES = [
     "results/tables/results.tex",
     "results/tables/anova.tex",
 ]
 
+FIGURE_NAMES = [
+    "historico_todos_experimentos",
+    "oscillogram",
+    "drift_kyber_asm",
+    "flash",
+    "latency",
+    "histogram_latency",
+    "bimodality",
+    "residuals",
+    "tradeoff",
+]
+
 FIGURES = [
-    "results/figures/historico_todos_experimentos.png",
-    "results/figures/historico_todos_experimentos.pdf",
-    "results/figures/oscillogram.png",
-    "results/figures/drift_kyber_asm.png",
-    "results/figures/drift_kyber_asm.pdf",
-    "results/figures/flash.png",
-    "results/figures/flash.pdf",
-    "results/figures/latency.png",
-    "results/figures/latency.pdf",
-    "results/figures/bimodality.png",
-    "results/figures/bimodality.pdf",
-    "results/figures/residuals.png",
-    "results/figures/residuals.pdf",
-    "results/figures/tradeoff.png",
-    "results/figures/tradeoff.pdf",
+    f"results/figures/{name}.{ext}"
+    for name in FIGURE_NAMES
+    for ext in ["tex", "pdf", "png"]
 ]
 
 SLIDE_FIGURES = [
@@ -77,6 +88,7 @@ SLIDE_FIGURES = [
     "slides/figures/slide_oscillogram.png",
     "slides/figures/slide_bancada_setup.png",
     "slides/figures/slide_flash.png",
+    "slides/figures/slide_histogram_latency.png",
     "slides/figures/slide_bimodality.png",
     "slides/figures/slide_tradeoff.png",
 ]
@@ -115,8 +127,8 @@ def _compact_la_csv_bytes(raw_bytes: bytes, is_kyber_osc: bool) -> bytes:
 def build_delivery_tgz(out_tgz="delivery.tgz"):
     """Empacota a pasta delivery/ em delivery.tgz (<16 MB) sem alterar os arquivos brutos em disco."""
     import io
-    exclude_dirs = {".venv", "node_modules", ".snakemake", "__pycache__", ".ipynb_checkpoints", "build"}
-    exclude_files = {".env", "delivery.tgz", "parcial.tgz"}
+    exclude_dirs = {".venv", "node_modules", ".snakemake", "__pycache__", ".ipynb_checkpoints", "build", ".quarto", "analise_files", ".cache"}
+    exclude_files = {".env", "delivery.tgz", "parcial.tgz", "analise.html"}
 
     with tarfile.open(out_tgz, "w:gz") as tar:
         for root, dirs, files in os.walk("delivery"):
@@ -190,19 +202,31 @@ rule catalog:
     shell:
         "{ENV_PREFIX} {PYTHON} src/analysis/catalog.py"
 
-# ---- 3. Execução completa do caderno analise.ipynb (estatística, tabelas e figuras) ----
-rule analysis_notebook:
+# ---- 3a. Ingestão dos dados brutos (prepare.py -> results/processed/) ----
+rule prepare:
     input:
         catalog="data/experiments/catalog.csv",
-        nb="src/analysis/analise.ipynb",
+        script="src/analysis/prepare.py"
+    output:
+        PREPARE_CSVS
+    shell:
+        "{ENV_PREFIX} {PYTHON} {input.script}"
+
+# ---- 3b. Execução completa do caderno analise.qmd em R/Quarto (estatística, tabelas e figuras TikZ/PDF/PNG) ----
+rule analysis_notebook:
+    input:
+        csvs=PREPARE_CSVS,
+        qmd="src/analysis/analise.qmd",
+        tema="src/analysis/R/tema.R",
         photo="slides/figures/bancada.jpg"
     output:
-        PROCESSED_CSVS,
+        ANALYSIS_CSVS,
         LATEX_TABLES,
         FIGURES,
-        SLIDE_FIGURES
+        SLIDE_FIGURES,
+        "src/analysis/analise.html"
     shell:
-        "{ENV_PREFIX} {PYTHON} -m jupyter nbconvert --to notebook --execute --inplace {input.nb}"
+        "quarto render {input.qmd}"
 
 # ---- 4. Renderização das apresentações Marp (PDF e HTML) ----
 rule slides:
@@ -227,7 +251,9 @@ rule package:
         "delivery/Makefile",
         "delivery/flake.nix",
         "delivery/data/experiments/catalog.csv",
-        "delivery/src/analysis/analise.ipynb"
+        "delivery/src/analysis/prepare.py",
+        "delivery/src/analysis/analise.qmd",
+        "delivery/src/analysis/R/tema.R"
     output:
         "delivery.tgz"
     run:
@@ -251,7 +277,8 @@ rule experiment:
         {ENV_PREFIX} {PYTHON} src/analysis/design.py --config src/analysis/config.yaml --out results/processed/design.csv
         {ENV_PREFIX} {PYTHON} src/analysis/catalog.py
         cp data/experiments/catalog.csv delivery/data/experiments/catalog.csv
-        {ENV_PREFIX} {PYTHON} -m jupyter nbconvert --to notebook --execute --inplace src/analysis/analise.ipynb
+        {ENV_PREFIX} {PYTHON} src/analysis/prepare.py
+        quarto render src/analysis/analise.qmd
         if [ ! -d "node_modules" ]; then npm ci --no-audit --no-fund; fi
         npm run pdf
         npm run html
@@ -280,13 +307,35 @@ rule clean:
     run:
         for base in [pathlib.Path("."), pathlib.Path("delivery")]:
             shutil.rmtree(base / "src/firmware/atmega4809/build", ignore_errors=True)
+            shutil.rmtree(base / "results/.cache", ignore_errors=True)
+            shutil.rmtree(base / "src/analysis/analise_files", ignore_errors=True)
+            shutil.rmtree(base / ".quarto", ignore_errors=True)
             for pattern in [
                 "results/processed/*.csv",
                 "results/tables/*.tex",
+                "results/figures/*.tex",
                 "results/figures/*.png",
                 "results/figures/*.pdf",
                 "results/slides/*",
                 "slides/figures/*.png",
+                "src/analysis/analise.html",
+                "src/analysis/*.knit.md",
+                "src/analysis/*.rmarkdown",
+                "artigo/figures/*.tex",
+                "artigo/figures/*.pdf",
+                "artigo/figures/*.png",
+                "artigo/tables/*.tex",
+                "artigo/main.pdf",
+                "artigo/*.aux",
+                "artigo/*.log",
+                "artigo/*.out",
+                "artigo/*.toc",
+                "artigo/*.fls",
+                "artigo/*.fdb_latexmk",
+                "artigo/*.synctex.gz",
+                "artigo/*.bbl",
+                "artigo/*.blg",
+                "artigo/*.cut",
             ]:
                 for f in glob.glob(str(base / pattern)):
                     if os.path.isfile(f):
@@ -299,6 +348,7 @@ rule clean:
                         c["outputs"] = []
                         c["execution_count"] = None
                 nb_path.write_text(json.dumps(nb, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-        if os.path.exists("delivery.tgz"):
-            os.remove("delivery.tgz")
-        print("[OK] Repositório e delivery/ limpos! Todos os resultados gerados e outputs do notebook foram removidos.")
+        for pkg in ["delivery.tgz", "parcial.tgz"]:
+            if os.path.exists(pkg):
+                os.remove(pkg)
+        print("[OK] Repositório e delivery/ limpos! Todos os resultados gerados foram removidos.")

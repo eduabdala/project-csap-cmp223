@@ -13,8 +13,8 @@ all: venv analysis slides package
 	@echo "[OK] Pipeline completo do repositório concluído!"
 	@echo "  - Catálogo:       data/experiments/catalog.csv"
 	@echo "  - Dados/Tabelas:  results/processed/ e results/tables/"
-	@echo "  - Gráficos:       results/figures/ e slides/figures/"
-	@echo "  - Notebook:       src/analysis/analise.ipynb"
+	@echo "  - Gráficos:       results/figures/ (.tex, .pdf, .png) e slides/figures/"
+	@echo "  - Caderno Quarto: src/analysis/analise.qmd -> src/analysis/analise.html"
 	@echo "  - Slides:         results/slides/01-proposta.pdf e 02-parcial.pdf"
 	@echo "  - Entregável:     delivery.tgz"
 	@echo "=================================================================="
@@ -36,7 +36,8 @@ venv:
 analysis: venv
 	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/design.py --config src/analysis/config.yaml --out results/processed/design.csv
 	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/catalog.py
-	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" -m jupyter nbconvert --to notebook --execute --inplace src/analysis/analise.ipynb
+	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/prepare.py
+	quarto render src/analysis/analise.qmd
 
 slides:
 	@if [ ! -d "node_modules" ]; then npm ci --no-audit --no-fund; fi
@@ -44,7 +45,7 @@ slides:
 	npm run html
 
 package:
-	@python3 -c 'import os, pathlib, tarfile; ex_d={".venv","node_modules",".snakemake","__pycache__",".ipynb_checkpoints","build"}; ex_f={".env","delivery.tgz"}; f=lambda ti: None if (any(p in ex_d for p in pathlib.Path(ti.name).parts) or pathlib.Path(ti.name).parts[-1] in ex_f or pathlib.Path(ti.name).parts[-1].endswith(".pyc") or (len(pathlib.Path(ti.name).parts)>=3 and pathlib.Path(ti.name).parts[0]=="delivery" and pathlib.Path(ti.name).parts[1]=="results" and pathlib.Path(ti.name).parts[-1]!=".gitkeep" and not ti.isdir()) or (len(pathlib.Path(ti.name).parts)==4 and pathlib.Path(ti.name).parts[:3]==("delivery","slides","figures") and pathlib.Path(ti.name).parts[-1].endswith(".png"))) else ti; t=tarfile.open("delivery.tgz","w:gz"); t.add("delivery",arcname="delivery",filter=f); t.close(); print(f"[PACKAGE] delivery.tgz gerado ({os.path.getsize(\"delivery.tgz\")/1048576:.2f} MB)")'
+	@python3 -c 'import os, pathlib, tarfile; ex_d={".venv","node_modules",".snakemake","__pycache__",".ipynb_checkpoints","build",".quarto","analise_files",".cache"}; ex_f={".env","delivery.tgz","parcial.tgz","analise.html"}; f=lambda ti: None if (any(p in ex_d for p in pathlib.Path(ti.name).parts) or pathlib.Path(ti.name).parts[-1] in ex_f or pathlib.Path(ti.name).parts[-1].endswith(".pyc") or (len(pathlib.Path(ti.name).parts)>=3 and pathlib.Path(ti.name).parts[0]=="delivery" and pathlib.Path(ti.name).parts[1]=="results" and pathlib.Path(ti.name).parts[-1]!=".gitkeep" and not ti.isdir()) or (len(pathlib.Path(ti.name).parts)==4 and pathlib.Path(ti.name).parts[:3]==("delivery","slides","figures") and pathlib.Path(ti.name).parts[-1].endswith(".png"))) else ti; t=tarfile.open("delivery.tgz","w:gz"); t.add("delivery",arcname="delivery",filter=f); t.close(); print(f"[PACKAGE] delivery.tgz gerado ({os.path.getsize(\"delivery.tgz\")/1048576:.2f} MB)")'
 
 firmware:
 	$(MAKE) -C src/firmware/atmega4809 all
@@ -58,11 +59,12 @@ experiment: venv
 
 clean:
 	@$(MAKE) -C delivery clean
-	@rm -rf src/firmware/atmega4809/build
-	@rm -rf results/processed/*.csv results/tables/*.tex results/figures/*.png results/figures/*.pdf results/slides/*
-	@rm -f slides/figures/*.png delivery.tgz
-	@python3 -c 'import json, pathlib; p = pathlib.Path("src/analysis/analise.ipynb"); nb = json.loads(p.read_text(encoding="utf-8")); [c.update({"outputs": [], "execution_count": None}) for c in nb["cells"] if c.get("cell_type") == "code"]; p.write_text(json.dumps(nb, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")'
-	@echo "[OK] Repositório principal e delivery/ limpos!"
+	@rm -rf src/firmware/atmega4809/build results/.cache src/analysis/analise_files .quarto
+	@rm -rf results/processed/*.csv results/tables/*.tex results/figures/*.tex results/figures/*.png results/figures/*.pdf results/slides/*
+	@rm -f slides/figures/*.png src/analysis/analise.html src/analysis/*.knit.md src/analysis/*.rmarkdown delivery.tgz parcial.tgz
+	@rm -f artigo/figures/*.tex artigo/figures/*.pdf artigo/figures/*.png artigo/tables/*.tex
+	@rm -f artigo/main.pdf artigo/*.aux artigo/*.log artigo/*.out artigo/*.toc artigo/*.fls artigo/*.fdb_latexmk artigo/*.synctex.gz artigo/*.bbl artigo/*.blg artigo/*.cut
+	@echo "[OK] Repositório principal e delivery/ limpos (apenas dados brutos e código-fonte)!"
 
 clean-all: clean
 	@$(MAKE) -C delivery clean-all

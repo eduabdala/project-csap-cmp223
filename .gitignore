@@ -77,7 +77,7 @@ src/analysis/*.knit.md
 diagrams/.cache/
 diagrams/out/
 
-# LaTeX (artefatos de compilação)
+# LaTeX (artefatos de compilação e figuras/tabelas geradas pelo analise.qmd)
 *.aux
 *.log
 *.out
@@ -88,5 +88,9 @@ diagrams/out/
 *.bbl
 *.blg
 artigo/main.pdf
+artigo/figures/*
+!artigo/figures/.gitkeep
+artigo/tables/*
+!artigo/tables/.gitkeep
 *.cut
 .kiro

@@ -105,8 +105,8 @@ th, td { padding: 3px 8px; }
 - **Reprodutibilidade:** Ambiente fixo via Nix (`avr-gcc 13`) com binários, logs e sinais brutos salvos por execução.
 - **Projeto Experimental:** Matriz de testes gerada automaticamente por código (`config.yaml` + `design.py` + `seed=42`).
 - **Controle Experimental:** Clock fixo em 20 MHz, medição via pino físico (sem atraso serial) e *stack watermarking* (`0xAA`).
-- **Programação Literal:** Caderno Jupyter (`analise.ipynb`).
-- **Ciência de Dados:** Dados em formato *tidy* (`pandas`), gráficos com **`ggplot`** (`plotnine`) e estatística (`scipy`/`statsmodels`).
+- **Programação Literária:** Caderno Quarto em R (`analise.qmd`) e ingestão bruta (`prepare.py`).
+- **Ciência de Dados:** Dados em formato *tidy* (`tidyverse`), gráficos com **`ggplot2`** (`tikzDevice`/`ragg`) e estatística em R (`car`, `emmeans`).
 <!-- 
 | Ordem (`Run #`) | Algoritmo | Variante | Flag | Operação | Latência LA (ms) | Pico Pilha (B) | Status |
 | :---: | :--- | :---: | :---: | :--- | ---: | ---: | :---: |

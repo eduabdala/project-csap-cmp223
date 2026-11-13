@@ -13,8 +13,8 @@ all: venv analysis slides
 	@echo "[OK] Pipeline completo concluído!"
 	@echo "  - Catálogo:       data/experiments/catalog.csv"
 	@echo "  - Dados/Tabelas:  results/processed/ e results/tables/"
-	@echo "  - Gráficos:       results/figures/ e slides/figures/"
-	@echo "  - Notebook:       src/analysis/analise.ipynb (com outputs)"
+	@echo "  - Gráficos:       results/figures/ (.tex, .pdf, .png) e slides/figures/"
+	@echo "  - Caderno Quarto: src/analysis/analise.qmd -> src/analysis/analise.html"
 	@echo "  - Slides:         results/slides/01-proposta.pdf e 02-parcial.pdf"
 	@echo "=================================================================="
 
@@ -33,11 +33,12 @@ venv:
 		fi; \
 	done
 
-# Atualiza o planejamento fatorial, o catálogo e executa o notebook analise.ipynb
+# Atualiza o planejamento fatorial, o catálogo, prepara os CSVs e renderiza o caderno analise.qmd
 analysis: venv
 	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/design.py --config src/analysis/config.yaml --out results/processed/design.csv
 	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/catalog.py
-	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" -m jupyter nbconvert --to notebook --execute --inplace src/analysis/analise.ipynb
+	LD_LIBRARY_PATH="$(LIB_PATH)" "$(VENV_DIR)/bin/python" src/analysis/prepare.py
+	quarto render src/analysis/analise.qmd
 
 # Compila os slides Marp em PDF e HTML em results/slides/
 slides:
@@ -59,13 +60,11 @@ experiment: venv
 
 # Limpa todos os artefatos gerados (mantém apenas dados brutos, código-fonte e bancada.jpg)
 clean:
-	@echo "[CLEAN] Removendo builds de firmware..."
-	@rm -rf src/firmware/atmega4809/build
+	@echo "[CLEAN] Removendo builds de firmware e caches..."
+	@rm -rf src/firmware/atmega4809/build results/.cache src/analysis/analise_files .quarto
 	@echo "[CLEAN] Removendo CSVs processados, tabelas LaTeX, figuras e slides compilados..."
-	@rm -rf results/processed/*.csv results/tables/*.tex results/figures/*.png results/figures/*.pdf results/slides/*
-	@rm -f slides/figures/*.png
-	@echo "[CLEAN] Limpando saídas (outputs) do notebook src/analysis/analise.ipynb..."
-	@python3 -c 'import json, pathlib; p = pathlib.Path("src/analysis/analise.ipynb"); nb = json.loads(p.read_text(encoding="utf-8")); [c.update({"outputs": [], "execution_count": None}) for c in nb["cells"] if c.get("cell_type") == "code"]; p.write_text(json.dumps(nb, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")'
+	@rm -rf results/processed/*.csv results/tables/*.tex results/figures/*.tex results/figures/*.png results/figures/*.pdf results/slides/*
+	@rm -f slides/figures/*.png src/analysis/analise.html src/analysis/*.knit.md src/analysis/*.rmarkdown
 	@echo "[OK] Tudo limpo! Restaram apenas os dados brutos e o código-fonte."
 
 # Limpeza profunda: remove também .venv e node_modules para testar instalação do zero

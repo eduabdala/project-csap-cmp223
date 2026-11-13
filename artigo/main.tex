@@ -9,8 +9,8 @@
 %   O sample original está em sample-acmsmall.tex, como referência.
 % Compilação (local):  cd artigo; pdflatex main; bibtex main; pdflatex main (x2)
 % Compilação (CI):     .github/workflows/build.yml (job "artigo")
-% Tabelas e figuras de resultados são GERADAS por src/analysis/analise.ipynb
-% (artigo/tables/*.tex e artigo/figures/*.pdf). Não editar à mão.
+% Tabelas e figuras de resultados são GERADAS por src/analysis/analise.qmd
+% (artigo/tables/*.tex e artigo/figures/*.tex). Não editar à mão.
 % ============================================================
 %% Igual ao sample-acmsmall.tex: \documentclass[acmsmall]{acmart}.
 %% Idioma pelo mecanismo da própria classe (seção "Multi-language papers"
@@ -32,6 +32,7 @@
 \acmYear{2026}
 
 \usepackage{booktabs}
+\usepackage{tikz}
 
 % Resultados (caderno) e diagramas (mermaid-cli).
 \graphicspath{{figures/}{../diagrams/out/}}
@@ -277,8 +278,9 @@ cronograma. Um script (\texttt{catalog.py}) classifica cada pasta pela
 evidência que ela contém: só a telemetria gravada pelo host com a placa
 conectada conta como dado de bancada. Execuções simuladas, usadas no
 desenvolvimento do pipeline, ficam fora da análise. A análise é um caderno
-Jupyter (\texttt{analise.ipynb}) que vai do JSON bruto às tabelas e figuras
-deste artigo; o Apêndice~\ref{app:repro} mostra como reexecutá-lo.
+Quarto em R (\texttt{analise.qmd}, alimentado por \texttt{prepare.py}) que vai
+do JSON bruto às tabelas e figuras deste artigo; o Apêndice~\ref{app:repro}
+mostra como reexecutá-lo.
 
 % ------------------------------------------------------------
 \section{Resultados}
@@ -311,7 +313,7 @@ aparecer no gráfico.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{latency}
+  \input{figures/latency.tex}
   \caption{Latência média por operação e configuração (escala log); as
   barras de erro (IC 95\%) são menores que os marcadores.}
   \Description{Quatro painéis lado a lado (asm -O3, asm -Os, ref -O3, ref
@@ -364,7 +366,7 @@ referência em $-$O3 do Kyber-512 e do CTRU-Light ocupam cerca de 46~KB dos
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{tradeoff}
+  \input{figures/tradeoff.tex}
   \caption{Pico de pilha $\times$ latência média por operação (IC 95\%); o eixo
   superior indica a ocupação da SRAM total do ATmega4809 (6~KB).}
   \Description{Dispersão do pico de pilha (eixo inferior em bytes, eixo
@@ -377,7 +379,7 @@ referência em $-$O3 do Kyber-512 e do CTRU-Light ocupam cerca de 46~KB dos
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{flash}
+  \input{figures/flash.tex}
   \caption{Flash ocupada por configuração; a linha tracejada é o limite de
   48~KB do ATmega4809.}
   \Description{Barras de Flash ocupada para cada algoritmo e implementação,
@@ -486,8 +488,9 @@ equações e interpretações técnicas do relatório.
 entre dados simulados e de bancada em \texttt{run\_experiment.py}; depuração
 de scripts de teste (\texttt{trigger.py}) e resolução do timeout do ECDH em C puro;
 diagnóstico de overflow de Flash no CTRU-Light;
-\texttt{catalog.py}; o caderno \texttt{analise.ipynb} (código e rascunho da
-interpretação); geração de figuras estilizadas para o template ACM; formatação
+\texttt{catalog.py} e \texttt{prepare.py}; o caderno \texttt{analise.qmd}
+(código em R e rascunho da interpretação); geração de figuras em TikZ para o
+template ACM; formatação
 deste artigo no template ACM e rascunho das Seções~\ref{sec:intro} a~\ref{sec:concl};
 e os slides das etapas parcial e final.
 
@@ -507,11 +510,10 @@ Ao Prof. Lucas Mello Schnorr, pela disciplina CMP223.
 Todo o material está no repositório do trabalho. Para regenerar as tabelas e
 figuras deste artigo a partir dos dados brutos:
 \begin{verbatim}
-python3 -m venv .venv
-source .venv/bin/activate       # no Windows: .venv\Scripts\activate
-pip install -r src/analysis/requirements-notebook.txt
+nix develop
 python src/analysis/catalog.py
-jupyter nbconvert --to notebook --execute --inplace src/analysis/analise.ipynb
+python src/analysis/prepare.py
+quarto render src/analysis/analise.qmd
 \end{verbatim}
 
 \end{document}

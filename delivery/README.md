@@ -14,52 +14,44 @@ Lógico de 8 canais / 24 MHz. O projeto é fatorial completo:
 Este pacote é uma cópia autocontida e enxuta do repositório. As pastas em
 `data/experiments/` guardam **apenas os dados brutos** coletados na bancada
 (`raw/telemetry_*.json`, `raw/la_*.csv`, `raw/console_*.log`, `bin/*.hex` e
-`schedule.json`); todos os CSVs processados, tabelas LaTeX e figuras do artigo
-e dos slides são construídos diretamente pelo caderno `src/analysis/analise.ipynb`.
+`schedule.json`); os CSVs *tidy* são extraídos por `src/analysis/prepare.py` e
+todas as análises estatísticas, tabelas LaTeX e figuras do artigo (TikZ `.tex`,
+`.pdf` e `.png`) e dos slides são construídas pelo caderno Quarto em R
+`src/analysis/analise.qmd` (com tema em `src/analysis/R/tema.R`).
 
 ## Executar tudo de uma vez (via `Snakemake` ou `Make`)
 
-O pacote conta com um [`Snakefile`](Snakefile) declarativo (integrado ao `flake.nix`) e com um [`Makefile`](Makefile) na raiz para automatizar a limpeza e a reconstrução completa do DAG (`catálogo` → `analise.ipynb` → `tabelas/figuras` → `slides`):
+O pacote conta com um [`Snakefile`](Snakefile) declarativo (integrado ao `flake.nix`) e com um [`Makefile`](Makefile) na raiz para automatizar a limpeza e a reconstrução completa do DAG (`catálogo` → `prepare.py` → `analise.qmd` → `tabelas/figuras` → `slides`):
 
 ### Com Snakemake (dentro do `nix develop` ou ambiente com Snakemake)
 ```bash
-snakemake -j1 clean        # Limpa CSVs processados, tabelas, figuras, slides e outputs do notebook
+snakemake -j1 clean        # Limpa CSVs processados, tabelas, figuras, slides e HTML do caderno
 snakemake -n               # Dry-run: inspeciona o grafo de dependências (DAG) que será executado
-snakemake -j1              # Executa todo o DAG a partir dos dados brutos (catálogo + notebook + figuras/tabelas + slides)
-snakemake -j1 experiment   # Roda o EXPERIMENTO COMPLETO na bancada (MCU + LA) + atualiza catálogo, notebook e slides
+snakemake -j1              # Executa todo o DAG a partir dos dados brutos (catálogo + prepare.py + analise.qmd + slides)
+snakemake -j1 experiment   # Roda o EXPERIMENTO COMPLETO na bancada (MCU + LA) + atualiza catálogo, caderno e slides
 snakemake -j1 firmware     # Compila os 12 firmwares bare-metal (.elf e .hex) do ATmega4809
 ```
 *(Você também pode customizar parâmetros da coleta via CLI, ex.: `snakemake -j1 experiment --config port=/dev/ttyACM0 iterations=30 tag=minha_campanha`).*
 
 ### Com Make (atalho direto com ou sem Snakemake)
 ```bash
-make clean        # Limpa todos os CSVs processados, tabelas, figuras, slides e outputs do notebook
-make              # Reconstrói tudo do zero: catálogo + analise.ipynb (figuras/tabelas) + slides PDF/HTML
+make clean        # Limpa todos os CSVs processados, tabelas, figuras, slides e HTML do caderno
+make              # Reconstrói tudo do zero: catálogo + prepare.py + analise.qmd (figuras/tabelas) + slides PDF/HTML
 make experiment   # Roda o experimento completo na bancada + reconstrói análise e slides
 make clean-all    # (Opcional) Limpa tudo acima e também remove .venv e node_modules
 ```
 
 ### A) Reconstruir toda a análise, figuras, tabelas e slides manualmente (sem `make`)
 
-No **Linux / Nix / WSL** (a partir da raiz deste pacote):
+Com **Nix (`nix develop`)** (a partir da raiz deste pacote):
 
 ```bash
-export LD_LIBRARY_PATH="$(dirname $(find /nix/store -name 'libstdc++.so.6' 2>/dev/null | head -n 1)):$(dirname $(find /nix/store -name 'libz.so.1' 2>/dev/null | head -n 1)):$LD_LIBRARY_PATH"
-python3 -m venv .venv && \
-  .venv/bin/python -m pip install -r src/analysis/requirements-notebook.txt && \
-  .venv/bin/python src/analysis/catalog.py && \
-  (cd src/analysis && ../../.venv/bin/python -m jupyter nbconvert --to notebook --execute --inplace analise.ipynb) && \
+nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
+  python3 src/analysis/catalog.py && \
+  python3 src/analysis/prepare.py && \
+  quarto render src/analysis/analise.qmd && \
   npm ci && npm run pdf
-```
-
-No **Windows (PowerShell)** (a partir da raiz deste pacote):
-
-```powershell
-py -3.13 -m venv .venv; `
-  .venv\Scripts\python -m pip install -r src/analysis/requirements-notebook.txt; `
-  .venv\Scripts\python src/analysis/catalog.py; `
-  Push-Location src/analysis; ..\..\.venv\Scripts\python -m jupyter nbconvert --to notebook --execute --inplace analise.ipynb; Pop-Location; `
-  npm ci; npm run pdf
+"
 ```
 
 ### B) Coletar campanha completa na bancada + atualizar catálogo, caderno e slides de uma vez
@@ -72,7 +64,8 @@ nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
     --alg all --variants asm ref --opts O3 Os --clocks 20 -n 30 --seed 42 \
     --tag bench_campanha_completa_la_nix && \
   python3 src/analysis/catalog.py && \
-  (cd src/analysis && jupyter nbconvert --to notebook --execute --inplace analise.ipynb) && \
+  python3 src/analysis/prepare.py && \
+  quarto render src/analysis/analise.qmd && \
   npm run pdf
 "
 ```
@@ -83,8 +76,9 @@ nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
 
 | Caminho | Conteúdo |
 | :--- | :--- |
-| `src/analysis/analise.ipynb` | Caderno principal: lê os dados brutos das 17 campanhas de bancada, analisa o histórico e a campanha com Analisador Lógico, roda estatística descritiva, IC 95%, Welch e ANOVA, e gera todas as tabelas e figuras (`results/` e `slides/figures/`) |
-| `src/analysis/requirements-notebook.txt` | Dependências Python com versões fixas |
+| `src/analysis/prepare.py` | Ingestão dos dados brutos das 17 campanhas de bancada para bases *tidy* em `results/processed/` |
+| `src/analysis/analise.qmd` | Caderno Quarto em R: analisa o histórico e a campanha com Analisador Lógico, roda estatística descritiva, IC 95%, Welch, ANOVA tipo II (`car`) e `emmeans`, e gera todas as tabelas e figuras (`results/` e `slides/figures/`) |
+| `src/analysis/R/tema.R` | Tema visual `ggplot2` e exportação simultânea em TikZ (`.tex` com fonte Linux Libertine do `acmart`), `.pdf`, `.png` e versão de slide |
 | `src/analysis/run_experiment.py` | Executor do experimento: compila, grava via UPDI e coleta na bancada |
 | `src/analysis/catalog.py` | Audita `data/experiments/` pela presença de telemetria bruta (`bench`) e gera `catalog.csv` |
 | `src/analysis/design.py`, `config.yaml` | Matriz de fatores (DOE, `pyDOE3`) |
@@ -98,7 +92,7 @@ nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
 | `data/experiments/` | Dados brutos das **17 campanhas reais de bancada** (10.124 observações no total) e `catalog.csv` |
 | `slides/` | Apresentações em Marp (`01-proposta.md`, `02-parcial.md`), temas UFRGS e figuras |
 | `results/` | Saídas geradas pelo caderno e pelo Marp (`processed/`, `figures/`, `tables/`, `slides/`) |
-| `flake.nix`, `flake.lock` | Ambiente declarativo Nix: `avr-gcc 13.2.0`, `avrdude`, `sigrok-cli` e `pyDOE3` |
+| `flake.nix`, `flake.lock` | Ambiente declarativo Nix: `avr-gcc 13.2.0`, `avrdude`, `sigrok-cli`, `pyDOE3`, R (`tidyverse`, `ggdist`, `car`, `emmeans`, `tikzDevice`), Quarto e TeX Live |
 
 ### Onde ficam os dados brutos e os resultados gerados
 
@@ -106,27 +100,23 @@ nix develop --extra-experimental-features "nix-command flakes" -c bash -c "
 | :--- | :--- | :--- |
 | `data/experiments/exp_<data>_<tag>_<id>/` | `run_experiment.py` | Apenas artefatos brutos: `raw/telemetry_*.json`, `raw/la_*.csv` (capturas 24 MHz), `raw/console_*.log`, `bin/*.hex` e `schedule.json` |
 | `data/experiments/catalog.csv` | `catalog.py` | Índice das 17 campanhas de bancada (`source = bench`) |
-| `results/processed/` | `analise.ipynb` | CSVs tratados: `bench_tidy.csv`, `bench_history_tidy.csv`, `campaigns_history.csv`, `la_vs_uart_overhead.csv`, `summary_bench.csv`, `summary_history_serial.csv`, `flash_sizes.csv`, `anova_latency.csv`, `cmp_*.csv` |
-| `results/figures/` | `analise.ipynb` | `historico_todos_experimentos`, `oscillogram`, `latency`, `flash`, `tradeoff`, `bimodality`, `residuals`, `drift_kyber_asm` (PDF e PNG) |
-| `slides/figures/` | `analise.ipynb` | `bancada.jpg` (foto estática) + figuras geradas pelo caderno (`slide_bancada_setup.png`, `slide_tradeoff.png`, `slide_flash.png`, `slide_bimodality.png`, `historico_todos_experimentos.png`) |
-| `results/tables/` | `analise.ipynb` | `results.tex` e `anova.tex` (tabelas LaTeX prontas para o artigo) |
+| `results/processed/` | `prepare.py` + `analise.qmd` | CSVs tratados: `bench_tidy.csv`, `bench_history_tidy.csv`, `campaigns_history.csv`, `la_vs_uart_overhead.csv`, `summary_bench.csv`, `flash_sizes.csv`, `anova_latency.csv`, `emmeans_ref_vs_asm.csv`, `cmp_*.csv` |
+| `results/figures/` | `analise.qmd` | `historico_todos_experimentos`, `oscillogram`, `latency`, `flash`, `tradeoff`, `bimodality`, `residuals`, `drift_kyber_asm` (`.tex` TikZ, `.pdf` e `.png`) |
+| `slides/figures/` | `analise.qmd` | `bancada.jpg` (foto estática) + figuras geradas pelo caderno (`slide_bancada_setup.png`, `slide_oscillogram.png`, `slide_tradeoff.png`, `slide_flash.png`, `slide_bimodality.png`, `historico_todos_experimentos.png`) |
+| `results/tables/` | `analise.qmd` | `results.tex` e `anova.tex` (tabelas LaTeX prontas para o artigo) |
 | `results/slides/` | `npm run pdf` | PDFs renderizados das apresentações (`01-proposta.pdf`, `02-parcial.pdf`) |
 
 ---
 
 ## Passo a passo individual
 
-### 1. Rodar apenas o caderno de análise
+### 1. Rodar apenas o caderno de análise (Python + R/Quarto)
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r src/analysis/requirements-notebook.txt
-cd src/analysis
-../../.venv/bin/python -m jupyter nbconvert --to notebook --execute --inplace analise.ipynb
-cd ../..
+nix develop
+python3 src/analysis/prepare.py
+quarto render src/analysis/analise.qmd
 ```
-
-Para abrir de forma interativa, execute `jupyter lab src/analysis/analise.ipynb`.
 
 ### 2. Gerar apenas os slides (PDF / PPTX / HTML)
 

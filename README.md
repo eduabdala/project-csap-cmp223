@@ -187,9 +187,9 @@ project-cspa-cmp223/
 │   │   └── vendor-pqc.sh           # Script de controle de fontes criptográficas
 │   └── analysis/
 │       ├── run_experiment.py       # Orquestrador fatorial automatizado (DOE)
-│       ├── reprocess_experiment.py # Processamento de dados brutos
-│       ├── generate_slide_figures.py # Renderizador dos gráficos de apresentação
-│       └── analise.ipynb           # Caderno de programação literária (Jupyter)
+│       ├── prepare.py              # Ingestão dos dados brutos para CSVs tidy
+│       ├── analise.qmd             # Caderno de programação literária em R (Quarto)
+│       └── R/tema.R                # Tema ggplot2 e exportação TikZ/PDF/PNG/Slides
 ├── slides/
 │   ├── 02-parcial.md               # Deck Marp da Apresentação Parcial (11 slides)
 │   └── figures/                    # Figuras em alta resolução dos slides

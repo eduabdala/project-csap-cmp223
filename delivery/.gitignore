@@ -29,7 +29,7 @@ results/tables/*
 results/slides/*
 !results/slides/.gitkeep
 
-# Figuras de slides geradas pelo analise.ipynb (mantém bancada.jpg)
+# Figuras de slides geradas pelo analise.qmd (mantém bancada.jpg)
 slides/figures/*.png
 slides/*.pdf
 
@@ -38,3 +38,11 @@ data/experiments/exp_*/figures/
 data/experiments/exp_*/report.md
 data/experiments/exp_*/summary.csv
 data/experiments/exp_*/raw/runs.csv
+
+# Cache do tikzDevice e saídas do Quarto (analise.qmd)
+results/.cache/
+src/analysis/analise.html
+src/analysis/analise_files/
+src/analysis/*.rmarkdown
+src/analysis/*.knit.md
+.quarto/

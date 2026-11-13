@@ -44,9 +44,54 @@
           doCheck = false;
         };
 
+        # R + Quarto + TeX Live (Linux Libertine / acmart + TikZ) for analise.qmd.
+        rPkgs = with pkgs.rPackages; [
+          tidyverse
+          patchwork
+          ggdist
+          emmeans
+          car
+          tikzDevice
+          ragg
+          systemfonts
+          jpeg
+          knitr
+          rmarkdown
+        ];
+
+        rEnv = pkgs.rWrapper.override { packages = rPkgs; };
+        quartoEnv = pkgs.quarto.override { extraRPackages = rPkgs; };
+
+        tex = pkgs.texlive.combine {
+          inherit (pkgs.texlive)
+            scheme-medium
+            acmart
+            babel-portuges
+            comment
+            environ
+            fontaxes
+            hyperxmp
+            ifmtarg
+            inconsolata
+            kastrup
+            libertine
+            mweights
+            ncctools
+            newtx
+            preprint
+            preview
+            totpages
+            trimspaces
+            upquote
+            xstring;
+        };
+
         analysis = with pkgs; [
           snakemake
           nodejs
+          rEnv
+          quartoEnv
+          tex
           (python3.withPackages (ps: with ps; [
             numpy
             pandas
@@ -60,13 +105,16 @@
             nbconvert
             ipykernel
             pyserial
+            pyyaml
           ] ++ [ pyDOE3 ]))
         ];
       in
       {
         devShells.default = pkgs.mkShell {
           name = "cmp223-dev";
-          packages = avr ++ bench ++ analysis;
+          packages = avr ++ bench ++ analysis ++ [ pkgs.glibcLocales ];
+          LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
+          LC_ALL = "C.UTF-8";
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
             pkgs.stdenv.cc.cc.lib
             pkgs.zlib

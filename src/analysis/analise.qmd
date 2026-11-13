@@ -40,6 +40,7 @@ As figuras em `.tex` são compostas pelo próprio LaTeX do artigo, com a fonte d
 ```{r setup}
 suppressPackageStartupMessages({
   library(tidyverse)
+  library(broom)
   library(patchwork)
   library(ggdist)
   library(emmeans)
@@ -75,9 +76,22 @@ mostrar <- function(png) knitr::include_graphics(png, rel_path = FALSE)
 df_hist <- ler("bench_history_tidy.csv")
 camp <- ler("campaigns_history.csv")
 df <- ler("bench_tidy.csv") |>
-  mutate(alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
-         op = factor(OP_ROTULO[operation], levels = OP_ROTULO))
-flash <- ler("flash_sizes.csv")
+  mutate(
+    alg = fct_recode(factor(algorithm), !!!setNames(names(LABEL), LABEL)) |>
+      fct_relevel(ALG_NIVEIS),
+    op = fct_recode(factor(operation), !!!setNames(names(OP_ROTULO), OP_ROTULO)) |>
+      fct_relevel(OP_ROTULO),
+    var_f = fct_recode(factor(variant), Assembly = "asm", `Referência` = "ref") |>
+      fct_relevel("Assembly", "Referência"),
+    opt_f = fct_relevel(factor(optimization), "-O3", "-Os")
+  )
+flash <- ler("flash_sizes.csv") |>
+  mutate(
+    alg = fct_recode(factor(algorithm), !!!setNames(names(LABEL), LABEL)) |>
+      fct_relevel(ALG_NIVEIS),
+    var_f = fct_relevel(factor(variant), "asm", "ref"),
+    opt_f = fct_relevel(factor(optimization), "-O3", "-Os")
+  )
 cat("Fontes:", getOption("cmp223.fonte_texto"), "(artigo) /",
     getOption("cmp223.fonte_slide"), "(slides)\n")
 ```
@@ -142,7 +156,10 @@ Na campanha #17 cada execução registrou o tempo medido no host pela serial
 custo da serialização da chave e da cifra a 115.200 bps.
 
 ```{r overhead}
-ler("la_vs_uart_overhead.csv")
+ler("la_vs_uart_overhead.csv") |>
+  pivot_longer(c(la_gpio_ms, uart_host_ms, overhead_uart_ms),
+               names_to = "metrica", values_to = "ms") |>
+  pivot_wider(names_from = metrica, values_from = ms)
 ```
 
 A forma de onda abaixo é reconstruída do CSV bruto do analisador lógico. As
@@ -240,6 +257,16 @@ deriva <- df |>
   filter(algorithm == "kyber512", variant == "asm", optimization == "-O3") |>
   group_by(op) |> mutate(ordem = row_number()) |> ungroup()
 
+# Regressão linear de deriva por operação via tidyr::nest() + broom::tidy()
+deriva_reg <- deriva |>
+  nest(dados = -op) |>
+  mutate(ajuste = map(dados, \(d) broom::tidy(lm(t_exec_ms ~ ordem, data = d)))) |>
+  select(-dados) |>
+  unnest(ajuste) |>
+  filter(term == "ordem") |>
+  transmute(op, inclinação_ms_por_run = round(estimate, 5), p_valor = signif(p.value, 3))
+deriva_reg
+
 fig_deriva <- function() {
   ggplot(deriva, aes(ordem, t_exec_ms)) +
     geom_hline(data = \(d) summarise(d, m = median(t_exec_ms), .by = op),
@@ -329,11 +356,123 @@ fig_latencia <- function() {
 mostrar(salvar(fig_latencia, "latency", alt = 2.3))
 ```
 
+No histograma abaixo, o intervalo horizontal de cada painel é ajustado à escala
+de microssegundos (`0,01 ms` = `10 µs` no CTRU-Light e `0,02 ms` = `20 µs` no
+Kyber-512) ou frações de milissegundo (`0,35 ms` no ECDH) em torno do modo
+principal de cada operação (`Assembly -O3`). Dessa forma, torna-se visível a
+dispersão fina entre as execuções (dezenas de microssegundos nos candidatos PQC
+e poucos milissegundos no ECDH), com o eixo vertical iniciado em 0.
+
+```{r histograma-latencia}
+# Filtra o grupo principal de cada operação (excluindo a 2ª tentativa do CTRU-Light,
+# detalhada na figura de bimodalidade a seguir, e a única execução atípica do Kyber-512)
+# para exibir a distribuição em resolução de dezenas de microssegundos (0,01 a 0,02 ms)
+# e décimos de milissegundo no ECDH.
+kem_micro <- df |>
+  filter(operation != "msgcrypt", variant == "asm", optimization == "-O3") |>
+  mutate(
+    alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
+    op = factor(OP_ROTULO[operation], levels = OP_ROTULO[1:3])
+  ) |>
+  group_by(alg, op) |>
+  arrange(t_exec_ms, .by_group = TRUE) |>
+  mutate(
+    salto = t_exec_ms - lag(t_exec_ms, default = first(t_exec_ms)),
+    corte = if (max(salto) > 3) t_exec_ms[which.max(salto)] else Inf
+  ) |>
+  filter(t_exec_ms < corte) |>
+  mutate(
+    passo_ms = case_when(
+      alg == "CTRU-Light" ~ 0.01,
+      alg == "Kyber-512" ~ 0.02,
+      TRUE ~ 0.35
+    ),
+    amp_us = round((max(t_exec_ms) - min(t_exec_ms)) * 1000),
+    sub_rot = if_else(
+      alg == "ECDH",
+      paste0("\u0394 = ", br(max(t_exec_ms) - min(t_exec_ms), 2), " ms (passo 0,35 ms)"),
+      paste0("\u0394 = ", amp_us, " \u00b5s (passo ", round(passo_ms * 1000), " \u00b5s)")
+    ),
+    painel = paste0(alg, " \u00b7 ", op, "\n", sub_rot)
+  ) |>
+  ungroup()
+
+ord_paineis <- kem_micro |>
+  distinct(alg, op, painel) |>
+  arrange(op, alg) |>
+  pull(painel)
+kem_micro <- kem_micro |> mutate(painel = factor(painel, levels = ord_paineis))
+
+# Calcula as barras com a largura exata (10 µs, 20 µs ou 350 µs) de cada painel
+barras_micro <- kem_micro |>
+  group_by(painel, alg, op, passo_ms) |>
+  reframe({
+    w <- first(passo_ms)
+    b0 <- floor(min(t_exec_ms) / w) * w - w * 0.5
+    b1 <- ceiling(max(t_exec_ms) / w) * w + w * 0.5
+    cortes <- seq(b0, b1 + w * 0.1, by = w)
+    h <- hist(t_exec_ms, breaks = cortes, plot = FALSE)
+    tibble(xmin = h$breaks[-length(h$breaks)],
+           xmax = h$breaks[-1],
+           x = h$mids,
+           y = h$counts)
+  }) |>
+  filter(y > 0)
+
+resumo_micro <- kem_micro |>
+  summarise(med = median(t_exec_ms), dp_us = sd(t_exec_ms) * 1000,
+            n = n(), .by = c(painel, alg))
+
+fig_histograma <- function() {
+  # No modo TikZ, substitui 'µs' e 'Δ' por comandos compatíveis com LaTeX T1
+  unid_us <- tx(" $\\mu$s", " \u00b5s")
+  bm <- barras_micro
+  rm <- resumo_micro |>
+    mutate(
+      rot = if_else(
+        alg == "ECDH",
+        paste0("mediana: ", br(med, 2), " ms\nDP = ", br(dp_us / 1000, 2), " ms (n = ", n, ")"),
+        paste0("mediana: ", br(med, 2), " ms\nDP = ", br(dp_us, 0), unid_us, " (n = ", n, ")")
+      )
+    )
+  if (modo_tikz()) {
+    niv <- gsub("\u00b5s", "$\\\\mu$s", gsub("\u0394", "$\\\\Delta$", levels(bm$painel)))
+    levels(bm$painel) <- niv
+    levels(rm$painel) <- niv
+  }
+  ggplot(bm) +
+    geom_rect(aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = y, fill = alg),
+              colour = "grey20", linewidth = 0.22, alpha = 0.9) +
+    geom_vline(data = rm, aes(xintercept = med), linetype = "dashed",
+               colour = "grey15", linewidth = 0.35) +
+    geom_text(data = rm, aes(x = -Inf, y = Inf, label = rot),
+              hjust = -0.06, vjust = 1.25, size = fs(0.66), lineheight = 0.92,
+              colour = "grey10") +
+    facet_wrap(~painel, ncol = 3, scales = "free") +
+    scale_fill_manual(values = PAL, guide = "none") +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 4), labels = rotulo_br(2),
+                       expand = expansion(mult = c(0.08, 0.08))) +
+    scale_y_continuous(breaks = scales::breaks_pretty(n = 4),
+                       limits = c(0, NA),
+                       expand = expansion(mult = c(0, 0.32))) +
+    labs(
+      x = tx("Latência no pino PA0 (ms --- resolução de 0,01 ms = 10 $\\mu$s em PQC)",
+             "Latência no pino PA0 (ms — resolução de 0,01 ms = 10 µs em PQC)"),
+      y = "Execuções"
+    )
+}
+mostrar(salvar(fig_histograma, "histogram_latency", alt = 3.9,
+               slide = "slide_histogram_latency.png", slide_larg = 13, slide_alt = 7))
+```
+
 No CTRU-Light, o polinômio secreto precisa ser inversível no anel; quando não
 é, o algoritmo descarta a amostra e sorteia de novo (*rejection sampling*). Isso
-cria dois grupos de tempo no `KeyGen` e no `Encaps`. O Kyber-512 forma um pico
-só. Cada ponto abaixo é uma das 30 execuções; os grupos são separados no maior
-intervalo entre valores consecutivos, quando ele passa de 3 ms.
+cria dois grupos de tempo separados por $\Delta t \approx +10{,}07\text{ ms}$ no
+`KeyGen` e no `Encaps`. Para que a variação em **microssegundos** (`10 µs` =
+`0,01 ms` no CTRU-Light e `20 µs` = `0,02 ms` no Kyber-512) fique claramente
+visível dentro de cada pico sem comprimir as barras, a figura abaixo amplia a
+vizinhança de cada modo (painéis de `80 µs` no CTRU-Light e `220 µs` no
+Kyber-512), iniciando o eixo vertical em 0.
 
 ```{r bimodalidade}
 bim <- df |>
@@ -344,49 +483,103 @@ bim <- df |>
                          levels = c("CTRU-Light \u00b7 KeyGen", "CTRU-Light \u00b7 Encaps",
                                     "Kyber-512 \u00b7 KeyGen", "Kyber-512 \u00b7 Encaps")))
 
-grupos <- bim |>
-  group_by(painel, alg) |>
+bim_modos <- bim |>
+  group_by(painel, alg, op) |>
   arrange(t_exec_ms, .by_group = TRUE) |>
-  # A reamostragem por rejeição só existe no CTRU-Light; no Kyber-512 um valor
-  # isolado é tratado como atípico, não como segundo grupo.
-  mutate(salto = t_exec_ms - lag(t_exec_ms, default = first(t_exec_ms)),
-         corte = if (first(alg) == "CTRU-Light" && max(salto) > 3) t_exec_ms[which.max(salto)] else Inf,
-         grupo = if_else(t_exec_ms < corte, "a", "b")) |>
-  group_by(painel, alg, grupo) |>
+  mutate(
+    salto = t_exec_ms - lag(t_exec_ms, default = first(t_exec_ms)),
+    corte = if (max(salto) > 3) t_exec_ms[which.max(salto)] else Inf,
+    grupo = if_else(t_exec_ms < corte, "a", "b")
+  ) |>
+  ungroup()
+
+grupos <- bim_modos |>
+  filter(!(alg == "Kyber-512" & grupo == "b")) |>
+  group_by(painel, alg, op, grupo) |>
   summarise(m = mean(t_exec_ms), med = median(t_exec_ms), lo = min(t_exec_ms),
-            hi = max(t_exec_ms), n = n(), .groups = "drop_last") |>
-  mutate(k = n()) |> ungroup()
+            hi = max(t_exec_ms), dp_us = sd(t_exec_ms) * 1000, n = n(),
+            .groups = "drop") |>
+  mutate(
+    passo_ms = if_else(alg == "CTRU-Light", 0.01, 0.02),
+    modo_titulo = case_when(
+      alg == "Kyber-512" ~ paste0(alg, " \u00b7 ", op, "\npico único (n = 29/30; +1 em +6,9 ms)"),
+      grupo == "a" ~ paste0(alg, " \u00b7 ", op, "\n1\u00aa tentativa (n = ", n, ")"),
+      TRUE ~ paste0(alg, " \u00b7 ", op, "\ncom rejeição (+10,07 ms, n = ", n, ")")
+    )
+  )
 grupos
 
+ord_bim <- c(
+  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "KeyGen" & grupos$grupo == "a"],
+  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "KeyGen" & grupos$grupo == "b"],
+  grupos$modo_titulo[grupos$alg == "Kyber-512"  & grupos$op == "KeyGen"],
+  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "Encaps" & grupos$grupo == "a"],
+  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "Encaps" & grupos$grupo == "b"],
+  grupos$modo_titulo[grupos$alg == "Kyber-512"  & grupos$op == "Encaps"]
+)
+
+bim_plot <- bim_modos |>
+  filter(!(alg == "Kyber-512" & grupo == "b")) |>
+  left_join(grupos |> select(painel, grupo, passo_ms, modo_titulo, med, dp_us, n),
+            by = c("painel", "grupo")) |>
+  mutate(modo_titulo = factor(modo_titulo, levels = ord_bim))
+
+barras_bim <- bim_plot |>
+  group_by(modo_titulo, alg, grupo, passo_ms) |>
+  reframe({
+    w <- first(passo_ms)
+    b0 <- floor(min(t_exec_ms) / w) * w - w * 0.5
+    b1 <- ceiling(max(t_exec_ms) / w) * w + w * 0.5
+    cortes <- seq(b0, b1 + w * 0.1, by = w)
+    h <- hist(t_exec_ms, breaks = cortes, plot = FALSE)
+    tibble(xmin = h$breaks[-length(h$breaks)],
+           xmax = h$breaks[-1],
+           x = h$mids,
+           y = h$counts)
+  }) |>
+  filter(y > 0)
+
+resumo_bim <- grupos |>
+  mutate(
+    modo_titulo = factor(modo_titulo, levels = ord_bim),
+    amp_us = round((hi - lo) * 1000)
+  )
+
 fig_bimodalidade <- function() {
-  # Rótulo à direita do grupo da esquerda e à esquerda do grupo da direita,
-  # para não sair do painel.
-  rot <- grupos |>
+  unid_us <- tx(" $\\mu$s", " \u00b5s")
+  bb <- barras_bim
+  rb <- resumo_bim |>
     mutate(
-      texto = case_when(
-        k == 1 ~ paste0("pico único: ", br(med), " ms\n(n = ", n, " de 30)"),
-        grupo == "a" ~ paste0(tx("1\\textsuperscript{a}", "1\u00aa"), " tentativa\n",
-                              br(m), " ms (n = ", n, ")"),
-        TRUE ~ paste0("com rejeição\n", br(m), " ms (n = ", n, ")")
-      ),
-      x = if_else(grupo == "b", lo, hi),
-      hj = if_else(grupo == "b", 1, 0),
-      x = x + if_else(grupo == "b", -1, 1) * 0.04 * (max(hi) - min(lo)),
-      .by = painel
+      rot = paste0("média: ", br(m, 2), " ms\nfaixa: ", amp_us,
+                   unid_us, " (DP = ", br(dp_us, 0), unid_us, ")")
     )
-  ggplot(bim, aes(t_exec_ms, fill = alg)) +
-    ggdist::geom_dots(binwidth = unit(c(1.2, Inf), "mm"), overflow = "compress",
-                      linewidth = 0.1, colour = "white") +
-    geom_text(data = rot, aes(x = x, y = 0.55, label = texto, hjust = hj), vjust = 0.5,
-              size = fs(0.75), lineheight = 0.9) +
-    facet_wrap(~painel, nrow = 2, scales = "free_x") +
+  if (modo_tikz()) {
+    niv <- gsub("1\u00aa", "1\\\\textsuperscript{a}", levels(bb$modo_titulo))
+    levels(bb$modo_titulo) <- niv
+    levels(rb$modo_titulo) <- niv
+  }
+  ggplot(bb) +
+    geom_rect(aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = y, fill = alg),
+              colour = "grey20", linewidth = 0.25, alpha = 0.9) +
+    geom_vline(data = rb, aes(xintercept = med), linetype = "dashed",
+               colour = "grey15", linewidth = 0.35) +
+    geom_text(data = rb, aes(x = -Inf, y = Inf, label = rot),
+              hjust = -0.06, vjust = 1.25, size = fs(0.68), lineheight = 0.92,
+              colour = "grey10") +
+    facet_wrap(~modo_titulo, nrow = 2, ncol = 3, scales = "free_x") +
     scale_fill_manual(values = PAL, guide = "none") +
-    scale_x_continuous(labels = rotulo_br(0), expand = expansion(mult = 0.08)) +
-    scale_y_continuous(limits = c(0, 1), breaks = NULL) +
-    labs(x = "Latência no pino PA0 (ms)", y = NULL)
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 4), labels = rotulo_br(2),
+                       expand = expansion(mult = c(0.12, 0.12))) +
+    scale_y_continuous(limits = c(0, 13), breaks = seq(0, 12, 3),
+                       expand = expansion(mult = c(0, 0.05))) +
+    labs(
+      x = tx("Latência no pino PA0 (ms --- barras de 10 $\\mu$s no CTRU-Light e 20 $\\mu$s no Kyber-512)",
+             "Latência no pino PA0 (ms — barras de 10 µs no CTRU-Light e 20 µs no Kyber-512)"),
+      y = "Execuções por intervalo"
+    )
 }
-mostrar(salvar(fig_bimodalidade, "bimodality", alt = 2.8,
-               slide = "slide_bimodality.png", slide_larg = 12, slide_alt = 6))
+mostrar(salvar(fig_bimodalidade, "bimodality", alt = 3.3,
+               slide = "slide_bimodality.png", slide_larg = 13, slide_alt = 6.5))
 ```
 
 ## 7. Comparação entre alternativas (razão de médias, Welch em escala log)
@@ -398,19 +591,19 @@ teste t de Welch sobre $\log T$ e exponencio a diferença e os limites do IC 95%
 kem <- df |> filter(operation != "msgcrypt") |> mutate(logT = log(t_exec_ms))
 
 comparar <- function(a, b) {
-  la <- log(a); lb <- log(b)
-  t <- t.test(lb, la, var.equal = FALSE)
-  c(razao = exp(unname(t$estimate[1] - t$estimate[2])),
-    ic_lo = exp(t$conf.int[1]), ic_hi = exp(t$conf.int[2]), p_welch = t$p.value)
+  broom::tidy(t.test(log(b), log(a), var.equal = FALSE)) |>
+    transmute(razao = exp(estimate), ic_lo = exp(conf.low),
+              ic_hi = exp(conf.high), p_welch = p.value)
 }
 tabela_razoes <- function(fator, base, alt) {
   outros <- setdiff(CHAVES, fator)
   kem |>
-    group_by(across(all_of(outros))) |>
-    filter(sum(.data[[fator]] == base) > 1, sum(.data[[fator]] == alt) > 1) |>
-    summarise(r = list(comparar(t_exec_ms[.data[[fator]] == base],
-                                t_exec_ms[.data[[fator]] == alt])), .groups = "drop") |>
-    unnest_wider(r) |>
+    nest(dados = -all_of(outros)) |>
+    filter(map_lgl(dados, \(d) sum(d[[fator]] == base) > 1 && sum(d[[fator]] == alt) > 1)) |>
+    mutate(r = map(dados, \(d) comparar(d$t_exec_ms[d[[fator]] == base],
+                                        d$t_exec_ms[d[[fator]] == alt]))) |>
+    select(-dados) |>
+    unnest(r) |>
     rename("razao_{alt}/{base}" := razao)
 }
 comparacoes <- list(
@@ -438,13 +631,12 @@ da soma de quadrados total explicada por cada termo.
 
 ```{r anova}
 fit <- lm(logT ~ algorithm * variant * optimization * operation, data = kem)
-aov2 <- car::Anova(fit, type = 2)
-aov_tab <- tibble(term = rownames(aov2), sum_sq = aov2$`Sum Sq`, df = aov2$Df,
-                  F = aov2$`F value`, p = aov2$`Pr(>F)`) |>
-  mutate(eta2 = sum_sq / sum(sum_sq)) |>
+aov_tab <- broom::tidy(car::Anova(fit, type = 2)) |>
+  transmute(term, sum_sq = sumsq, df, F = statistic, p = p.value,
+            eta2 = sum_sq / sum(sum_sq)) |>
   arrange(desc(eta2))
 write_csv(aov_tab, file.path(DIRS$out, "anova_latency.csv"), na = "")
-cat(sprintf("R\u00b2 = %.5f   n = %d\n", summary(fit)$r.squared, nobs(fit)))
+cat(sprintf("R\u00b2 = %.5f   n = %d\n", broom::glance(fit)$r.squared, nobs(fit)))
 aov_tab |> mutate(across(c(sum_sq, F, eta2), \(x) signif(x, 5)))
 ```
 
@@ -460,19 +652,21 @@ razao_emm
 ```
 
 ```{r residuos}
-diag_df <- tibble(ajustado = fitted(fit), residuo = resid(fit))
+diag_df <- broom::augment(fit, data = kem)
 fig_residuos <- function() {
-  a <- ggplot(diag_df, aes(ajustado, residuo)) +
+  a <- ggplot(diag_df, aes(.fitted, .resid, colour = alg)) +
     geom_hline(yintercept = 0, linewidth = 0.3) +
-    geom_point(size = 0.4, alpha = 0.35, colour = "#0072B2") +
+    geom_point(size = 0.45, alpha = 0.45) +
+    scale_colour_manual(values = PAL) +
     labs(x = "Ajustado (log ms)", y = "Resíduo")
-  b <- ggplot(diag_df, aes(sample = residuo)) +
+  b <- ggplot(diag_df, aes(sample = .resid, colour = alg)) +
     geom_qq_line(linewidth = 0.3, colour = "grey40") +
-    geom_qq(size = 0.4, alpha = 0.35, colour = "#0072B2") +
+    geom_qq(size = 0.45, alpha = 0.45) +
+    scale_colour_manual(values = PAL, guide = "none") +
     labs(x = "Quantil teórico (normal)", y = "Quantil amostral")
-  a + b
+  a + b + plot_layout(guides = "collect") & theme(legend.position = "top")
 }
-mostrar(salvar(fig_residuos, "residuals", alt = 2.0))
+mostrar(salvar(fig_residuos, "residuals", alt = 2.2))
 ```
 
 ## 9. Trade-off SRAM × latência e tabelas LaTeX
@@ -485,7 +679,7 @@ fig_tradeoff <- function() {
   ggplot(s_kem, aes(stack_peak_b, mean_ms, colour = alg, shape = variant)) +
     geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 40, linewidth = 0.3,
                   show.legend = FALSE) +
-    geom_point(size = 1.6, stroke = 0.6, fill = "white") +
+    geom_point(size = fs(0.55), stroke = 0.6, fill = "white") +
     scale_x_continuous(
       limits = c(500, 3400), breaks = seq(500, 3000, 500), labels = rotulo_br(0, " B"),
       sec.axis = sec_axis(~ . / 6144 * 100, breaks = seq(10, 50, 10),
@@ -507,31 +701,40 @@ mostrar(salvar(fig_tradeoff, "tradeoff", alt = 2.5,
 ```
 
 ```{r tabelas}
-t_res <- summ |> filter(operation != "msgcrypt")
-fl_b <- flash |> select(algorithm, variant, optimization, flash_b)
+tab_res <- summ |>
+  filter(operation != "msgcrypt") |>
+  mutate(
+    alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
+    var = factor(variant, levels = c("asm", "ref")),
+    opt = factor(optimization, levels = c("-O3", "-Os")),
+    celula = str_glue("{br(mean_ms)} $\\pm$ {br(ci95_ms)}")
+  ) |>
+  select(alg, var, opt, operation, celula, stack_peak_b, n) |>
+  pivot_wider(names_from = operation, values_from = celula) |>
+  left_join(flash |> select(alg, var = var_f, opt = opt_f, flash_b),
+            by = c("alg", "var", "opt")) |>
+  arrange(alg, var, opt) |>
+  mutate(
+    alg_col = if_else(row_number() == 1, as.character(alg), ""),
+    sep_grupo = if_else(row_number() == 1 & as.integer(alg) > 1, "\\addlinespace\n", ""),
+    .by = alg
+  ) |>
+  mutate(
+    linha = str_glue(
+      "{sep_grupo}{alg_col} & {var} & $-${substring(opt, 2)} & ",
+      "{keygen} & {encaps} & {decaps} & {br(stack_peak_b, 0)} & {br(flash_b / 1024)} & {n} \\\\"
+    )
+  )
+
 linhas <- c(
   "\\begin{tabular}{@{}lllrrrrrr@{}}", "\\toprule",
   " & & & \\multicolumn{3}{c}{Latência (ms), média $\\pm$ IC 95\\%} & & & \\\\",
   "\\cmidrule(lr){4-6}",
   "Algoritmo & Var. & Otim. & KeyGen & Encaps & Decaps & Pilha (B) & Flash (KB) & $N$ \\\\",
-  "\\midrule"
+  "\\midrule",
+  tab_res$linha,
+  "\\bottomrule", "\\end{tabular}"
 )
-for (k in seq_along(names(LABEL))) {
-  a <- names(LABEL)[k]
-  if (k > 1) linhas <- c(linhas, "\\addlinespace")
-  primeira <- TRUE
-  for (v in c("asm", "ref")) for (o in c("-O3", "-Os")) {
-    r <- t_res |> filter(algorithm == a, variant == v, optimization == o)
-    celula <- function(op) with(filter(r, operation == op), paste0(br(mean_ms), " $\\pm$ ", br(ci95_ms)))
-    fb <- fl_b |> filter(algorithm == a, variant == v, optimization == o) |> pull(flash_b)
-    linhas <- c(linhas, paste0(paste(
-      if (primeira) LABEL[[a]] else "", v, paste0("$-$", substring(o, 2)),
-      celula("keygen"), celula("encaps"), celula("decaps"),
-      br(max(r$stack_peak_b), 0), br(fb / 1024), min(r$n), sep = " & "), " \\\\"))
-    primeira <- FALSE
-  }
-}
-linhas <- c(linhas, "\\bottomrule", "\\end{tabular}")
 writeLines(linhas, file.path(DIRS$tab, "results.tex"), useBytes = FALSE)
 
 NOMES_TERMO <- c(
@@ -553,6 +756,10 @@ alinhas <- c(
   "\\bottomrule", "\\end{tabular}"
 )
 writeLines(alinhas, file.path(DIRS$tab, "anova.tex"))
+art_tab <- file.path(DIRS$root, "artigo", "tables")
+if (dir.exists(art_tab)) {
+  file.copy(file.path(DIRS$tab, c("results.tex", "anova.tex")), art_tab, overwrite = TRUE)
+}
 cat(readLines(file.path(DIRS$tab, "results.tex")), sep = "\n")
 cat(readLines(file.path(DIRS$tab, "anova.tex")), sep = "\n")
 ```

@@ -54,6 +54,7 @@ registrar_fontes <- function() {
   fonte_slide <- c("Inter", "Arial", "Liberation Sans", "DejaVu Sans")
   fonte_slide <- c(fonte_slide[fonte_slide %in% familias], "sans")[[1]]
   options(cmp223.fonte_texto = fonte_texto, cmp223.fonte_slide = fonte_slide)
+  ggplot2::update_geom_defaults("text", list(family = fonte_texto))
   invisible(c(texto = fonte_texto, slide = fonte_slide))
 }
 
@@ -119,9 +120,11 @@ theme_artigo <- function(base_size = 8, base_family = "") {
       axis.text = element_text(colour = "grey15"),
       strip.background = element_blank(),
       strip.text = element_text(face = "bold", hjust = 0, margin = margin(1, 0, 2, 0)),
+      panel.spacing.x = unit(base_size * 0.9, "pt"),
       legend.position = "top",
       legend.title = element_blank(),
-      legend.margin = margin(0, 0, 0, 0),
+      legend.margin = margin(0, 5, 0, 5),
+      legend.spacing.x = unit(base_size * 0.8, "pt"),
       legend.box.spacing = unit(base_size * 0.3, "pt"),
       legend.key.size = unit(base_size * 1.1, "pt"),
       legend.background = element_blank(),
@@ -153,7 +156,13 @@ salvar <- function(fazer, nome, larg = TEXTW_IN, alt = 2.5, ajuste = theme(),
   desenhar <- function(tikz_mode, corpo, familia) {
     .modo$tikz <- tikz_mode
     .modo$corpo <- corpo
-    on.exit({ grDevices::dev.off(); .modo$tikz <- FALSE; .modo$corpo <- 8 })
+    ggplot2::update_geom_defaults("text", list(family = familia))
+    on.exit({
+      grDevices::dev.off()
+      ggplot2::update_geom_defaults("text", list(family = fonte_texto))
+      .modo$tikz <- FALSE
+      .modo$corpo <- 8
+    })
     print(.aplicar(fazer(), theme_artigo(corpo, familia) + ajuste))
   }
 
@@ -176,14 +185,24 @@ salvar <- function(fazer, nome, larg = TEXTW_IN, alt = 2.5, ajuste = theme(),
                   units = "in", res = 200)
     desenhar(FALSE, slide_corpo, fonte_slide)
   }
+  art_fig <- file.path(dirs$root, "artigo", "figures")
+  if (dir.exists(art_fig)) {
+    exts <- if (tikz) c(".tex", ".pdf", ".png") else c(".pdf", ".png")
+    file.copy(paste0(base, exts), art_fig, overwrite = TRUE)
+  }
   invisible(paste0(base, ".png"))
 }
 
 # Versão de slide de um gráfico, devolvida como objeto (para compor com outros).
 versao_slide <- function(fazer, corpo = 15, ajuste = theme()) {
+  familia <- getOption("cmp223.fonte_slide", "sans")
   .modo$corpo <- corpo
-  on.exit(.modo$corpo <- 8)
-  .aplicar(fazer(), theme_artigo(corpo, getOption("cmp223.fonte_slide", "sans")) + ajuste)
+  ggplot2::update_geom_defaults("text", list(family = familia))
+  on.exit({
+    ggplot2::update_geom_defaults("text", list(family = ""))
+    .modo$corpo <- 8
+  })
+  .aplicar(fazer(), theme_artigo(corpo, familia) + ajuste)
 }
 
 # Compila a versão avulsa (standAlone) do mesmo gráfico em PDF.

@@ -513,15 +513,74 @@ def main():
     if not raw_records:
         sys.exit("!! No observations collected; nothing to aggregate.")
 
-    # 6. Write raw runs CSV
+    # 6. Write raw runs CSV + native Tidy Data tables (observations.csv & builds.csv)
     raw_csv_path = os.path.join(exp_dir, "raw", "runs.csv")
+    obs_csv_path = os.path.join(exp_dir, "raw", "observations.csv")
+    builds_csv_path = os.path.join(exp_dir, "raw", "builds.csv")
+    exp_name = os.path.basename(exp_dir)
     if raw_records:
         raw_records.sort(key=lambda x: x["run_order"])
         with open(raw_csv_path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(raw_records[0].keys()))
             w.writeheader()
             w.writerows(raw_records)
-        print(f">> [DATA] Saved raw trial observations -> {raw_csv_path}")
+        obs_fields = [
+            "experiment", "run_order", "repetition", "algorithm", "variant",
+            "optimization", "clock_mhz", "operation", "t_pa0_ms", "t_uart_ms",
+            "cycles_pa0", "stack_peak_b", "sram_headroom_pct", "payload_bytes",
+            "kem_validated", "msg_validated", "status",
+        ]
+        with open(obs_csv_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=obs_fields)
+            w.writeheader()
+            for r in raw_records:
+                w.writerow({
+                    "experiment": exp_name,
+                    "run_order": r["run_order"],
+                    "repetition": r["repetition"],
+                    "algorithm": r["algorithm"],
+                    "variant": r["variant"],
+                    "optimization": r["optimization"],
+                    "clock_mhz": r["clock_mhz"],
+                    "operation": r["operation"],
+                    "t_pa0_ms": r.get("latency_la_gpio_ms"),
+                    "t_uart_ms": r.get("latency_host_serial_ms"),
+                    "cycles_pa0": r.get("cycles"),
+                    "stack_peak_b": r["stack_peak_b"],
+                    "sram_headroom_pct": r.get("sram_headroom_pct"),
+                    "payload_bytes": r.get("payload_bytes", 0),
+                    "kem_validated": r.get("kem_validated"),
+                    "msg_validated": r.get("msg_validated"),
+                    "status": r["status"],
+                })
+        print(f">> [DATA] Saved tidy observations -> {obs_csv_path}")
+
+    # Native tidy firmware size table from compiled .hex files
+    build_rows = []
+    for combo in combos:
+        opt_clean = combo["opt"].lstrip("-")
+        hx = os.path.join(exp_dir, "bin", f"firmware-{combo['alg']}-{combo['variant']}-{combo['clock_mhz']}MHz-{opt_clean}.hex")
+        if os.path.exists(hx):
+            flash_b = 0
+            with open(hx, encoding="ascii") as fh:
+                for line in fh:
+                    if line.startswith(":") and line[7:9] == "00":
+                        flash_b += int(line[1:3], 16)
+            build_rows.append({
+                "algorithm": combo["alg"],
+                "variant": combo["variant"],
+                "optimization": f"-{opt_clean}",
+                "clock_mhz": combo["clock_mhz"],
+                "flash_b": flash_b,
+                "flash_kb": round(flash_b / 1024.0, 2),
+                "flash_free_pct": round(100.0 * (49152 - flash_b) / 49152, 2),
+            })
+    if build_rows:
+        with open(builds_csv_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(build_rows[0].keys()))
+            w.writeheader()
+            w.writerows(build_rows)
+        print(f">> [DATA] Saved tidy build sizes -> {builds_csv_path}")
 
     # 7. Aggregate statistics
     summary_csv_path = os.path.join(exp_dir, "summary.csv")

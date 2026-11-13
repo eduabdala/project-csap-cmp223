@@ -26,9 +26,9 @@ src/
 │   └── vendor-pqc.sh        # Script auxiliar de importação dos fontes base
 └── analysis/
     ├── run_experiment.py    # Orquestrador mestre do plano fatorial (DOE com pyDOE3)
-    ├── reprocess_experiment.py # Alinhador de traces brutos do analisador lógico
-    ├── generate_slide_figures.py # Gerador de gráficos para a apresentação
-    └── analise.ipynb        # Caderno de programação literária (Jupyter)
+    ├── prepare.py           # Ingestão dos dados brutos para bases tidy (results/processed/)
+    ├── analise.qmd          # Caderno de programação literária em R (Quarto)
+    └── R/tema.R             # Tema visual ggplot2 e exportação TikZ/PDF/PNG/Slides
 ```
 
 ---
