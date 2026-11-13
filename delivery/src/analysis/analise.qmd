@@ -66,7 +66,6 @@ source(file.path(ROOT, "src", "analysis", "R", "tema.R"))
 registrar_fontes()
 configurar_tikz(DIRS$tmp)
 
-LA_EXP <- "exp_20261108_155653_bench_campanha_completa_la_nix_8289"
 ALG_NIVEIS <- unname(LABEL)
 OP_ROTULO <- c(keygen = "KeyGen", encaps = "Encaps", decaps = "Decaps", msgcrypt = "MsgCrypt")
 
@@ -85,6 +84,7 @@ df <- ler("bench_tidy.csv") |>
       fct_relevel("Assembly", "Referência"),
     opt_f = fct_relevel(factor(optimization), "-O3", "-Os")
   )
+LA_EXP <- unique(df$experiment)[[1]]
 flash <- ler("flash_sizes.csv") |>
   mutate(
     alg = fct_recode(factor(algorithm), !!!setNames(names(LABEL), LABEL)) |>
@@ -487,6 +487,7 @@ bim_modos <- bim |>
   group_by(painel, alg, op) |>
   arrange(t_exec_ms, .by_group = TRUE) |>
   mutate(
+    n_tot = n(),
     salto = t_exec_ms - lag(t_exec_ms, default = first(t_exec_ms)),
     corte = if (max(salto) > 3) t_exec_ms[which.max(salto)] else Inf,
     grupo = if_else(t_exec_ms < corte, "a", "b")
@@ -498,11 +499,12 @@ grupos <- bim_modos |>
   group_by(painel, alg, op, grupo) |>
   summarise(m = mean(t_exec_ms), med = median(t_exec_ms), lo = min(t_exec_ms),
             hi = max(t_exec_ms), dp_us = sd(t_exec_ms) * 1000, n = n(),
-            .groups = "drop") |>
+            n_tot = first(n_tot), .groups = "drop") |>
   mutate(
     passo_ms = if_else(alg == "CTRU-Light", 0.01, 0.02),
     modo_titulo = case_when(
-      alg == "Kyber-512" ~ paste0(alg, " \u00b7 ", op, "\npico único (n = 29/30; +1 em +6,9 ms)"),
+      alg == "Kyber-512" & n == n_tot ~ paste0(alg, " \u00b7 ", op, "\npico único (n = ", n, "/", n_tot, ")"),
+      alg == "Kyber-512" ~ paste0(alg, " \u00b7 ", op, "\npico único (n = ", n, "/", n_tot, "; +", n_tot - n, " atíp.)"),
       grupo == "a" ~ paste0(alg, " \u00b7 ", op, "\n1\u00aa tentativa (n = ", n, ")"),
       TRUE ~ paste0(alg, " \u00b7 ", op, "\ncom rejeição (+10,07 ms, n = ", n, ")")
     )
@@ -570,8 +572,9 @@ fig_bimodalidade <- function() {
     scale_fill_manual(values = PAL, guide = "none") +
     scale_x_continuous(breaks = scales::breaks_pretty(n = 4), labels = rotulo_br(2),
                        expand = expansion(mult = c(0.12, 0.12))) +
-    scale_y_continuous(limits = c(0, 13), breaks = seq(0, 12, 3),
-                       expand = expansion(mult = c(0, 0.05))) +
+    scale_y_continuous(breaks = scales::breaks_pretty(n = 4),
+                       limits = c(0, NA),
+                       expand = expansion(mult = c(0, 0.28))) +
     labs(
       x = tx("Latência no pino PA0 (ms --- barras de 10 $\\mu$s no CTRU-Light e 20 $\\mu$s no Kyber-512)",
              "Latência no pino PA0 (ms — barras de 10 µs no CTRU-Light e 20 µs no Kyber-512)"),

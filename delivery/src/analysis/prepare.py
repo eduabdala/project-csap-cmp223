@@ -123,13 +123,24 @@ def hex_bytes(path: str) -> int:
 
 def load_flash(exp_dir: Path) -> pd.DataFrame:
     hx = []
+    for bcsv in sorted(glob.glob(str(exp_dir / "exp_*" / "raw" / "builds.csv"))):
+        bdf = pd.read_csv(bcsv)
+        bdf["src"] = Path(bcsv).parts[-3]
+        hx.extend(bdf.to_dict(orient="records"))
     for f in sorted(glob.glob(str(exp_dir / "exp_*" / "bin" / "*.hex"))):
         m = HEX.match(os.path.basename(f))
         if m:
-            hx.append({**m.groupdict(), "flash_b": hex_bytes(f), "src": Path(f).parts[-3]})
-    flash = (pd.DataFrame(hx).groupby(["alg", "variant", "opt"]).last().reset_index()
-             .rename(columns={"alg": "algorithm", "opt": "optimization"}))
-    flash["optimization"] = "-" + flash.optimization
+            d = m.groupdict()
+            hx.append({
+                "algorithm": d["alg"],
+                "variant": d["variant"],
+                "optimization": "-" + d["opt"],
+                "flash_b": hex_bytes(f),
+                "src": Path(f).parts[-3],
+            })
+    flash = (pd.DataFrame(hx)
+             .groupby(["algorithm", "variant", "optimization"], as_index=False)
+             .last())
     flash["flash_kb"] = (flash.flash_b / 1024.0).round(2)
     flash["flash_free_pct"] = (100 * (FLASH_TOTAL_B - flash.flash_b) / FLASH_TOTAL_B).round(2)
     return flash
@@ -145,12 +156,16 @@ def main() -> None:
     hist.to_csv(out / "bench_history_tidy.csv", index=False)
     campaigns.to_csv(out / "campaigns_history.csv", index=False)
 
-    # Campanha #17: a largura do pulso no PA0 (t_la_ms) é a latência principal.
-    df = hist[hist.experiment == LA_EXP].copy()
+    # Seleciona automaticamente a campanha mais recente com LA completo (ou LA_EXP)
+    la_cands = hist[hist.t_la_ms.notna()].groupby("experiment")["algorithm"].nunique()
+    la_full = la_cands[la_cands >= 3].index.tolist()
+    la_exp = sorted(la_full)[-1] if la_full else LA_EXP
+
+    df = hist[hist.experiment == la_exp].copy()
     df["t_exec_ms"] = df["t_la_ms"]
     df.to_csv(out / "bench_tidy.csv", index=False)
 
-    sub = hist[(hist.experiment == LA_EXP) & (hist.variant == "asm") & (hist.optimization == "-O3")]
+    sub = hist[(hist.experiment == la_exp) & (hist.variant == "asm") & (hist.optimization == "-O3")]
     overhead = sub.groupby(["algorithm", "operation"]).agg(
         la_gpio_ms=("t_la_ms", "mean"),
         uart_host_ms=("t_exec_ms", "mean"),
