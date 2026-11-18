@@ -503,120 +503,175 @@ mostrar(salvar(fig_histograma, "histogram_latency", alt = 3.9,
 No CTRU-Light, o polinômio secreto precisa ser inversível no anel; quando não
 é, o algoritmo descarta a amostra e sorteia de novo (*rejection sampling*). Isso
 cria dois grupos de tempo separados por $\Delta t \approx +10{,}07\text{ ms}$ no
-`KeyGen` e no `Encaps`. Para que a variação em **microssegundos** (`10 µs` =
-`0,01 ms` no CTRU-Light e `20 µs` = `0,02 ms` no Kyber-512) fique claramente
-visível dentro de cada pico sem comprimir as barras, a figura abaixo amplia a
-vizinhança de cada modo (painéis de `80 µs` no CTRU-Light e `220 µs` no
-Kyber-512), iniciando o eixo vertical em 0.
+`KeyGen` e no `Encaps`. Reunindo as duas campanhas de analisador lógico com
+$N = 150$ (`N = 300` execuções por operação), o gráfico abaixo reúne **ambos os
+modos no mesmo painel** — comprimindo apenas a faixa vazia intermediária com um
+corte de eixo (`//`) — para que os **bins finos (`10 µs` no CTRU-Light e `20 µs`
+no Kyber-512)** e a **curva de densidade (KDE)** exibam tanto a forma interna de
+cada pico quanto a bimodalidade completa, com o eixo vertical iniciado em 0.
 
 ```{r bimodalidade}
-bim <- df |>
-  filter(variant == "asm", optimization == "-O3",
-         algorithm %in% c("ctru-light", "kyber512"), operation %in% c("keygen", "encaps")) |>
-  mutate(alg = fct_drop(alg), op = fct_drop(op),
-         painel = factor(paste(alg, op, sep = " \u00b7 "),
-                         levels = c("CTRU-Light \u00b7 KeyGen", "CTRU-Light \u00b7 Encaps",
-                                    "Kyber-512 \u00b7 KeyGen", "Kyber-512 \u00b7 Encaps")))
+# Combina as duas coletas completas de LA com N = 150 (total N = 300 por operação PQC)
+exps_la_n150 <- c("exp_20261112_231454_bench_all_8891",
+                  "exp_20261113_051000_bench_all_8891")
 
-bim_modos <- bim |>
+bim <- df_hist |>
+  filter(experiment %in% exps_la_n150,
+         !is.na(t_la_ms),
+         variant == "asm", optimization == "-O3",
+         algorithm %in% c("ctru-light", "kyber512"),
+         operation %in% c("keygen", "encaps")) |>
+  mutate(
+    t_exec_ms = t_la_ms,
+    alg = fct_recode(factor(algorithm), !!!setNames(names(LABEL), LABEL)) |>
+      fct_relevel(c("CTRU-Light", "Kyber-512")),
+    op = fct_recode(factor(operation), !!!setNames(names(OP_ROTULO), OP_ROTULO)) |>
+      fct_relevel(c("KeyGen", "Encaps")),
+    painel = factor(paste(alg, op, sep = " \u00b7 "),
+                    levels = c("CTRU-Light \u00b7 KeyGen", "CTRU-Light \u00b7 Encaps",
+                               "Kyber-512 \u00b7 KeyGen", "Kyber-512 \u00b7 Encaps"))
+  ) |>
   group_by(painel, alg, op) |>
   arrange(t_exec_ms, .by_group = TRUE) |>
   mutate(
     n_tot = n(),
+    passo_ms = if_else(alg == "CTRU-Light", 0.01, 0.02),
     salto = t_exec_ms - lag(t_exec_ms, default = first(t_exec_ms)),
-    corte = if (max(salto) > 3) t_exec_ms[which.max(salto)] else Inf,
+    corte = if (max(salto) > 2) t_exec_ms[which.max(salto)] else Inf,
     grupo = if_else(t_exec_ms < corte, "a", "b")
   ) |>
   ungroup()
 
-grupos <- bim_modos |>
-  filter(!(alg == "Kyber-512" & grupo == "b")) |>
-  group_by(painel, alg, op, grupo) |>
+grupos <- bim |>
+  group_by(painel, alg, op, grupo, passo_ms) |>
   summarise(m = mean(t_exec_ms), med = median(t_exec_ms), lo = min(t_exec_ms),
-            hi = max(t_exec_ms), dp_us = sd(t_exec_ms) * 1000, n = n(),
-            n_tot = first(n_tot), .groups = "drop") |>
+            hi = max(t_exec_ms), n = n(), n_tot = first(n_tot),
+            .groups = "drop") |>
+  mutate(pct = 100 * n / n_tot)
+
+# Comprime o intervalo vazio entre o modo A e o modo B em cada painel para exibir
+# os bins de 10-20 µs e os dois picos no mesmo gráfico (corte // no eixo X).
+desloc_painel <- grupos |>
+  select(painel, alg, passo_ms, grupo, lo, hi, med) |>
+  pivot_wider(names_from = grupo, values_from = c(lo, hi, med)) |>
   mutate(
-    passo_ms = if_else(alg == "CTRU-Light", 0.01, 0.02),
-    modo_titulo = case_when(
-      alg == "Kyber-512" & n == n_tot ~ paste0(alg, " \u00b7 ", op, "\npico único (n = ", n, "/", n_tot, ")"),
-      alg == "Kyber-512" ~ paste0(alg, " \u00b7 ", op, "\npico único (n = ", n, "/", n_tot, "; +", n_tot - n, " atíp.)"),
-      grupo == "a" ~ paste0(alg, " \u00b7 ", op, "\n1\u00aa tentativa (n = ", n, ")"),
-      TRUE ~ paste0(alg, " \u00b7 ", op, "\ncom rejeição (+10,07 ms, n = ", n, ")")
-    )
+    gap = 1.5 * passo_ms,
+    desloc = (lo_b - hi_a) - gap,
+    x_corte = hi_a + 0.5 * gap,
+    delta = med_b - med_a
   )
-grupos
 
-ord_bim <- c(
-  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "KeyGen" & grupos$grupo == "a"],
-  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "KeyGen" & grupos$grupo == "b"],
-  grupos$modo_titulo[grupos$alg == "Kyber-512"  & grupos$op == "KeyGen"],
-  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "Encaps" & grupos$grupo == "a"],
-  grupos$modo_titulo[grupos$alg == "CTRU-Light" & grupos$op == "Encaps" & grupos$grupo == "b"],
-  grupos$modo_titulo[grupos$alg == "Kyber-512"  & grupos$op == "Encaps"]
-)
+bim_proj <- bim |>
+  left_join(desloc_painel |> select(painel, desloc), by = "painel") |>
+  mutate(x_plot = if_else(grupo == "a", t_exec_ms, t_exec_ms - desloc))
 
-bim_plot <- bim_modos |>
-  filter(!(alg == "Kyber-512" & grupo == "b")) |>
-  left_join(grupos |> select(painel, grupo, passo_ms, modo_titulo, med, dp_us, n),
-            by = c("painel", "grupo")) |>
-  mutate(modo_titulo = factor(modo_titulo, levels = ord_bim))
-
-barras_bim <- bim_plot |>
-  group_by(modo_titulo, alg, grupo, passo_ms) |>
+barras_bim <- bim_proj |>
+  group_by(painel, alg, grupo, passo_ms) |>
   reframe({
     w <- first(passo_ms)
-    b0 <- floor(min(t_exec_ms) / w) * w - w * 0.5
-    b1 <- ceiling(max(t_exec_ms) / w) * w + w * 0.5
+    b0 <- floor(min(x_plot) / w) * w - w * 0.5
+    b1 <- ceiling(max(x_plot) / w) * w + w * 0.5
     cortes <- seq(b0, b1 + w * 0.1, by = w)
-    h <- hist(t_exec_ms, breaks = cortes, plot = FALSE)
+    h <- hist(x_plot, breaks = cortes, plot = FALSE)
     tibble(xmin = h$breaks[-length(h$breaks)],
            xmax = h$breaks[-1],
-           x = h$mids,
            y = h$counts)
   }) |>
   filter(y > 0)
 
-resumo_bim <- grupos |>
-  mutate(
-    modo_titulo = factor(modo_titulo, levels = ord_bim),
-    amp_us = round((hi - lo) * 1000)
-  )
+kde_bim <- bim_proj |>
+  left_join(desloc_painel |> select(painel, x_corte), by = "painel") |>
+  group_by(painel, alg, grupo, passo_ms) |>
+  reframe({
+    w <- first(passo_ms)
+    n_g <- n()
+    xc <- first(x_corte)
+    bw <- max(sd(x_plot) * 0.8, w * 1.1)
+    d <- density(x_plot, bw = bw, n = 256,
+                 from = min(x_plot) - 2.5 * w, to = max(x_plot) + 2.5 * w)
+    tibble(x = d$x, y = d$y * n_g * w, xc = xc)
+  }) |>
+  filter((grupo == "a" & x <= xc) | (grupo == "b" & x >= xc))
+
+# Ticks reais em ms para cada lado do corte //
+ticks_bim <- grupos |>
+  left_join(desloc_painel |> select(painel, desloc), by = "painel") |>
+  group_by(painel, grupo) |>
+  reframe({
+    vals <- if (cur_group()$grupo == "a") {
+      unique(round(c(lo, med), 2))
+    } else {
+      unique(round(c(med, hi), 2))
+    }
+    tibble(x_real = vals,
+           x_plot = if (cur_group()$grupo == "a") vals else vals - first(desloc),
+           rot = br(vals, 2))
+  })
+grupos
 
 fig_bimodalidade <- function() {
-  unid_us <- tx(" $\\mu$s", " \u00b5s")
-  bb <- barras_bim
-  rb <- resumo_bim |>
+  ymax_p <- bind_rows(
+    barras_bim |> summarise(ym = max(y), .by = painel),
+    kde_bim |> summarise(ym = max(y), .by = painel)
+  ) |> summarise(ymax = max(ym), .by = painel)
+
+  corte_df <- desloc_painel |>
+    left_join(ymax_p, by = "painel") |>
     mutate(
-      rot = paste0("média: ", br(m, 2), " ms\nfaixa: ", amp_us,
-                   unid_us, " (DP = ", br(dp_us, 0), unid_us, ")")
+      delta_str = if (modo_tikz()) sub(",", "{,}", br(delta, 2)) else br(delta, 2),
+      rot_delta = paste0(tx("$\\Delta t = +", "\u0394t = +"), delta_str, tx("$ ms", " ms"))
     )
-  if (modo_tikz()) {
-    niv <- gsub("1\u00aa", "1\\\\textsuperscript{a}", levels(bb$modo_titulo))
-    levels(bb$modo_titulo) <- niv
-    levels(rb$modo_titulo) <- niv
-  }
-  ggplot(bb) +
-    geom_rect(aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = y, fill = alg),
-              colour = "grey20", linewidth = 0.25, alpha = 0.9) +
-    geom_vline(data = rb, aes(xintercept = med), linetype = "dashed",
-               colour = "grey15", linewidth = 0.35) +
-    geom_text(data = rb, aes(x = -Inf, y = Inf, label = rot),
-              hjust = -0.06, vjust = 1.25, size = fs(0.68), lineheight = 0.92,
-              colour = "grey10") +
-    facet_wrap(~modo_titulo, nrow = 2, ncol = 3, scales = "free_x") +
+
+  med_df <- grupos |>
+    left_join(desloc_painel |> select(painel, desloc), by = "painel") |>
+    left_join(ymax_p, by = "painel") |>
+    mutate(
+      x_plot = if_else(grupo == "a", med, med - desloc),
+      rot_modo = case_when(
+        alg == "CTRU-Light" & grupo == "a" ~ paste0(tx("1\\textsuperscript{a}", "1\u00aa"), " tent."),
+        alg == "CTRU-Light" & grupo == "b" ~ "rejeição",
+        grupo == "a" ~ "principal",
+        TRUE ~ "secundário"
+      ),
+      texto = paste0(rot_modo, "\n", br(pct, 1), tx("\\%", "%"), " (n=", n, ")"),
+      hj = if_else(grupo == "a", 1.05, -0.05)
+    )
+
+  # Faceta com eixo X independente; mapeamos os rótulos reais por painel
+  p <- ggplot() +
+    geom_rect(data = barras_bim,
+              aes(xmin = xmin, xmax = xmax, ymin = 0, ymax = y, fill = alg),
+              colour = "grey20", linewidth = 0.2, alpha = 0.55) +
+    geom_ribbon(data = kde_bim,
+                aes(x = x, ymin = 0, ymax = y, fill = alg, group = interaction(painel, grupo)),
+                alpha = 0.25) +
+    geom_line(data = kde_bim,
+              aes(x = x, y = y, colour = alg, group = interaction(painel, grupo)),
+              linewidth = 0.7) +
+    geom_vline(data = corte_df, aes(xintercept = x_corte),
+               linetype = "dotted", colour = "grey45", linewidth = 0.45) +
+    geom_label(data = corte_df, aes(x = x_corte, y = ymax * 0.68, label = paste0("//\n", rot_delta)),
+               fill = "white", label.size = 0, colour = "grey20", fontface = "bold",
+               size = fs(0.62), lineheight = 0.9) +
+    geom_text(data = med_df, aes(x = x_plot, y = ymax * 1.05, label = texto),
+              hjust = 0.5, vjust = 0, colour = "grey10", size = fs(0.62), lineheight = 0.9) +
+    facet_wrap(~painel, nrow = 2, scales = "free") +
     scale_fill_manual(values = PAL, guide = "none") +
-    scale_x_continuous(breaks = scales::breaks_pretty(n = 4), labels = rotulo_br(2),
-                       expand = expansion(mult = c(0.12, 0.12))) +
-    scale_y_continuous(breaks = scales::breaks_pretty(n = 4),
-                       limits = c(0, NA),
-                       expand = expansion(mult = c(0, 0.28))) +
+    scale_colour_manual(values = PAL, guide = "none") +
+    scale_x_continuous(
+      breaks = ticks_bim$x_plot,
+      labels = ticks_bim$rot,
+      expand = expansion(mult = c(0.10, 0.10))
+    ) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.28))) +
     labs(
-      x = tx("Latência no pino PA0 (ms --- barras de 10 $\\mu$s no CTRU-Light e 20 $\\mu$s no Kyber-512)",
-             "Latência no pino PA0 (ms — barras de 10 µs no CTRU-Light e 20 µs no Kyber-512)"),
-      y = "Execuções por intervalo"
+      x = tx("Latência no pino PA0 (ms --- corte // comprime o intervalo vazio; bins de 10 $\\mu$s / 20 $\\mu$s)",
+             "Latência no pino PA0 (ms — corte // comprime o intervalo vazio; bins de 10 µs / 20 µs)"),
+      y = "Execuções por intervalo (histograma + KDE, N = 300)"
     )
+  p
 }
-mostrar(salvar(fig_bimodalidade, "bimodality", alt = 3.3,
+mostrar(salvar(fig_bimodalidade, "bimodality", alt = 3.4,
                slide = "slide_bimodality.png", slide_larg = 13, slide_alt = 6.5))
 ```
 
@@ -704,7 +759,7 @@ fig_residuos <- function() {
     labs(x = "Quantil teórico (normal)", y = "Quantil amostral")
   a + b + plot_layout(guides = "collect") & theme(legend.position = "top")
 }
-mostrar(salvar(fig_residuos, "residuals", alt = 2.2))
+mostrar(salvar(fig_residuos, "residuals", alt = 2.2, tikz = FALSE))
 ```
 
 ## 9. Trade-off SRAM × latência e tabelas LaTeX
@@ -747,6 +802,7 @@ tab_res <- summ |>
     opt = factor(optimization, levels = c("-O3", "-Os")),
     celula = str_glue("{br(mean_ms)} $\\pm$ {br(ci95_ms)}")
   ) |>
+  mutate(stack_peak_b = max(stack_peak_b), n = min(n), .by = c(alg, var, opt)) |>
   select(alg, var, opt, operation, celula, stack_peak_b, n) |>
   pivot_wider(names_from = operation, values_from = celula) |>
   left_join(flash |> select(alg, var = var_f, opt = opt_f, flash_b),

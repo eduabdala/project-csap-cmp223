@@ -1,0 +1,13 @@
+algorithm,variant,optimization,clock_mhz,flash_b,flash_kb,flash_free_pct
+kyber512,asm,-O3,20.0,23222,22.68,52.75
+kyber512,asm,-Os,20.0,14258,13.92,70.99
+kyber512,ref,-O3,20.0,45536,44.47,7.36
+kyber512,ref,-Os,20.0,35308,34.48,28.17
+ctru-light,asm,-O3,20.0,28010,27.35,43.01
+ctru-light,asm,-Os,20.0,21838,21.33,55.57
+ctru-light,ref,-O3,20.0,48140,47.01,2.06
+ctru-light,ref,-Os,20.0,40386,39.44,17.83
+ecdh,asm,-O3,20.0,13088,12.78,73.37
+ecdh,asm,-Os,20.0,8080,7.89,83.56
+ecdh,ref,-O3,20.0,26094,25.48,46.91
+ecdh,ref,-Os,20.0,9912,9.68,79.83

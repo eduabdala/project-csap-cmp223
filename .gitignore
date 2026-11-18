@@ -64,6 +64,10 @@ delivery/data/experiments/exp_*/report.md
 delivery/data/experiments/exp_*/summary.csv
 delivery/data/experiments/exp_*/raw/runs.csv
 
+# CSVs de Logic Analyzer > 100 MiB (limite do GitHub)
+data/experiments/exp_*/raw/la_ecdh_ref_*.csv
+delivery/data/experiments/exp_*/raw/la_ecdh_ref_*.csv
+
 # Cache do tikzDevice e saídas do Quarto (analise.qmd)
 results/.cache/
 delivery/results/.cache/

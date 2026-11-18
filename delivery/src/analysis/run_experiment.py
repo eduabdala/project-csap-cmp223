@@ -165,8 +165,8 @@ def run_hardware_collection(port, repeats, exp_dir, combo, use_la=False, suffix=
     log_path = os.path.join(exp_dir, "raw", f"console_{prefix}.log")
     la_csv = os.path.join(exp_dir, "raw", f"la_{prefix}.csv")
 
-    # Dynamic timeout: ECDH pure C requires ~14s for Encaps (2x 256-bit scalar mult on 8-bit AVR)
-    timeout_sec = 35.0 if (combo["alg"] == "ecdh" and combo["variant"] == "ref") else 15.0
+    # Dynamic timeout: ECDH requires ~3.2s-14.3s per op on 8-bit AVR
+    timeout_sec = 35.0 if combo["alg"] == "ecdh" else 15.0
     # Sem otimização o código C fica várias vezes mais lento (ECDH ref -O3 já leva ~14 s no Encaps).
     if combo["opt"] == "-O0":
         timeout_sec *= 4
@@ -261,13 +261,14 @@ def simulate_trial(task, trial_order, rng):
     }
 
 def generate_histograms(raw_csv_path, output_prefix):
-    """Render Freedman-Diaconis distribution histograms via plot_histogram.py."""
-    cmd = [
-        sys.executable, "src/analysis/plot_histogram.py",
-        "--in", raw_csv_path,
-        "--out", output_prefix
-    ]
-    subprocess.run(cmd, check=True)
+    """Render Freedman-Diaconis distribution histograms via plot_histogram.py (best-effort)."""
+    script = "src/analysis/plot_histogram.py"
+    if not os.path.exists(script):
+        return
+    cmd = [sys.executable, script, "--in", raw_csv_path, "--out", output_prefix]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        print(">> [INFO] plot_histogram.py ignorado (figuras geradas pelo analise.qmd).", file=sys.stderr)
 
 def aggregate_experiment(raw_records, summary_csv_path):
     """Compute Jain-standard statistics (Mean, Std Dev, 95% CI, Median, IQR)."""
@@ -466,6 +467,10 @@ def main():
     ap.add_argument("--keep-going", action="store_true",
                     help="Se um bloco falhar (ex.: estouro de pilha em -O0), pula os blocos restantes da "
                          "mesma configuração e continua com as outras, em vez de encerrar a campanha.")
+    ap.add_argument("--resume", default=None,
+                    help="Resume an interrupted experiment directory (skips completed blocks)")
+    ap.add_argument("--retries", type=int, default=3,
+                    help="Max flash+collect attempts per block on serial/LA failure (default: 3)")
     args = ap.parse_args()
     if not 1 <= args.blocks <= args.n:
         ap.error(f"--blocks deve estar entre 1 e -n ({args.n})")
@@ -476,11 +481,16 @@ def main():
         print(f"!! ou rode 'snakemake -j1' (sem 'experiment') para reproduzir a análise a partir dos dados já coletados.")
         sys.exit(1)
 
-    # 1. Generate unique directory for this experiment
+    # 1. Generate or resume directory for this experiment
     # Mode goes into the folder name so simulated runs can never be mistaken for bench data.
-    exp_dir = generate_experiment_dir(tag=f"{args.mode}_{args.tag or args.alg}")
+    if args.resume:
+        exp_dir = os.path.abspath(args.resume)
+        for sub in ("raw", "figures", "bin"):
+            os.makedirs(os.path.join(exp_dir, sub), exist_ok=True)
+    else:
+        exp_dir = generate_experiment_dir(tag=f"{args.mode}_{args.tag or args.alg}")
     print(f"\n{'='*75}")
-    print(f">> [EXPERIMENT] Initialized isolated experiment workspace:")
+    print(f">> [EXPERIMENT] {'Resuming' if args.resume else 'Initialized isolated'} experiment workspace:")
     print(f">> Directory: {exp_dir}")
     print(f">> Mode:      {args.mode}")
     print(f">> Seed:      {args.seed}")
@@ -514,6 +524,118 @@ def main():
     for blk in plan:
         print(f"   {blk['block_order']:>3}. {blk['alg']:<10} {blk['variant']} {blk['opt']} "
               f"bloco {blk['block']}/{args.blocks} ({blk['n_reps']} rodadas)")
+
+    def _append_combo_records(parsed_runs, blk):
+        op_map = {"K": "keygen", "E": "encaps", "D": "decaps", "M": "msgcrypt"}
+        key = combo_key(blk)
+        for item in parsed_runs:
+            op_code = item.get("cmd", "")
+            op_name = op_map.get(op_code, item.get("op_name", "").lower())
+            k = (key, op_name)
+            rep_counter[k] = rep_counter.get(k, 0) + 1
+            has_la = item.get("t_la_ms") is not None
+            lat_ms = item["t_la_ms"] if has_la else item["t_exec_ms"]
+            tot_ms = item.get("t_total_ms", lat_ms)
+            clk = blk["clock_mhz"]
+            cycles = item["cycles_la"] if has_la else int(round(lat_ms * clk * 1000))
+            lat_method = "saleae_logic_analyzer_gpio" if has_la else "host_serial_first_byte"
+            raw_records.append({
+                "run_order": len(raw_records) + 1,
+                "block": blk["block"],
+                "block_order": blk["block_order"],
+                "repetition": rep_counter[k],
+                "timestamp": item.get("timestamp", datetime.datetime.now().isoformat()),
+                "algorithm": blk["alg"],
+                "variant": blk["variant"],
+                "optimization": blk["opt"],
+                "clock_mhz": blk["clock_mhz"],
+                "operation": op_name,
+                "latency_ms": lat_ms,
+                "latency_host_serial_ms": item["t_exec_ms"],
+                "latency_la_gpio_ms": item.get("t_la_ms"),
+                "total_time_ms": tot_ms,
+                "cycles": cycles,
+                "stack_peak_b": item["stack_peak"],
+                "sram_total_b": item.get("sram_total", 6144),
+                "sram_headroom_pct": item.get("sram_headroom", round((6144 - item["stack_peak"]) / 6144 * 100.0, 2)),
+                "payload_bytes": item.get("payload_bytes", 0),
+                "current_ma": None,
+                "energy_uj": None,
+                "kem_validated": item.get("kem_validated"),
+                "msg_validated": item.get("msg_validated"),
+                "status": item.get("status", "OK"),
+                "data_source": "bench",
+                "latency_method": lat_method,
+                "energy_method": "not_measured",
+            })
+
+    def _checkpoint_tidy():
+        raw_csv_path = os.path.join(exp_dir, "raw", "runs.csv")
+        obs_csv_path = os.path.join(exp_dir, "raw", "observations.csv")
+        builds_csv_path = os.path.join(exp_dir, "raw", "builds.csv")
+        exp_name = os.path.basename(exp_dir)
+        if raw_records:
+            raw_records.sort(key=lambda x: x["run_order"])
+            with open(raw_csv_path, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(raw_records[0].keys()))
+                w.writeheader()
+                w.writerows(raw_records)
+            obs_fields = [
+                "experiment", "timestamp", "run_order", "block_order", "block", "repetition",
+                "algorithm", "variant", "optimization", "clock_mhz", "operation",
+                "t_pa0_ms", "t_uart_ms", "cycles_pa0", "stack_peak_b",
+                "sram_headroom_pct", "payload_bytes", "kem_validated", "msg_validated", "status",
+            ]
+            with open(obs_csv_path, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=obs_fields)
+                w.writeheader()
+                for r in raw_records:
+                    w.writerow({
+                        "experiment": exp_name,
+                        "timestamp": r.get("timestamp"),
+                        "run_order": r["run_order"],
+                        "block_order": r.get("block_order"),
+                        "block": r.get("block"),
+                        "repetition": r["repetition"],
+                        "algorithm": r["algorithm"],
+                        "variant": r["variant"],
+                        "optimization": r["optimization"],
+                        "clock_mhz": r["clock_mhz"],
+                        "operation": r["operation"],
+                        "t_pa0_ms": r.get("latency_la_gpio_ms"),
+                        "t_uart_ms": r.get("latency_host_serial_ms"),
+                        "cycles_pa0": r.get("cycles"),
+                        "stack_peak_b": r["stack_peak_b"],
+                        "sram_headroom_pct": r.get("sram_headroom_pct"),
+                        "payload_bytes": r.get("payload_bytes", 0),
+                        "kem_validated": r.get("kem_validated"),
+                        "msg_validated": r.get("msg_validated"),
+                        "status": r["status"],
+                    })
+        build_rows = []
+        for c in combos:
+            opt_clean = c["opt"].lstrip("-")
+            hx = os.path.join(exp_dir, "bin", f"firmware-{c['alg']}-{c['variant']}-{c['clock_mhz']}MHz-{opt_clean}.hex")
+            if os.path.exists(hx):
+                flash_b = 0
+                with open(hx, encoding="ascii") as fh:
+                    for line in fh:
+                        if line.startswith(":") and line[7:9] == "00":
+                            flash_b += int(line[1:3], 16)
+                build_rows.append({
+                    "algorithm": c["alg"],
+                    "variant": c["variant"],
+                    "optimization": f"-{opt_clean}",
+                    "clock_mhz": c["clock_mhz"],
+                    "flash_b": flash_b,
+                    "flash_kb": round(flash_b / 1024.0, 2),
+                    "flash_free_pct": round(100.0 * (49152 - flash_b) / 49152, 2),
+                })
+        if build_rows:
+            with open(builds_csv_path, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(build_rows[0].keys()))
+                w.writeheader()
+                w.writerows(build_rows)
 
     # 5. Execute builds and measurements
     raw_records = []
@@ -569,7 +691,6 @@ def main():
                 blk["status"] = "skipped_unpaired"
         write_schedule(schedule_path, plan)
 
-        op_map = {"K": "keygen", "E": "encaps", "D": "decaps", "M": "msgcrypt"}
         failed_configs = set()
         for blk in plan:
             key = combo_key(blk)
@@ -579,19 +700,42 @@ def main():
                 blk["status"] = "skipped_after_failure"
                 write_schedule(schedule_path, plan)
                 continue
+
+            suffix = f"_b{blk['block']:02d}" if args.blocks > 1 else ""
+            prefix = f"{blk['alg']}_{blk['variant']}_{blk['opt'].lstrip('-')}_{int(blk['clock_mhz'])}MHz{suffix}"
+            tel_path = os.path.join(exp_dir, "raw", f"telemetry_{prefix}.json")
+            expected_runs = len(ops) * blk["n_reps"]
+            if args.resume and os.path.exists(tel_path):
+                with open(tel_path, encoding="utf-8") as fh:
+                    existing = json.load(fh)
+                if len(existing) >= expected_runs:
+                    print(f">> [RESUME] Skipping completed {prefix} ({len(existing)} obs)")
+                    _append_combo_records(existing, blk)
+                    blk["status"] = "ok"
+                    write_schedule(schedule_path, plan)
+                    continue
+
             print(f"\n>> [BLOCO {blk['block_order']}/{len(plan)}] {blk['alg']} {blk['variant']} {blk['opt']} "
                   f"- bloco {blk['block']}/{args.blocks} ({blk['n_reps']} rodadas)")
             blk["started_at"] = datetime.datetime.now().isoformat()
             ok_coll, parsed_runs = False, []
-            if flash_firmware(hex_files[key], port=args.port):
-                suffix = f"_b{blk['block']:02d}" if args.blocks > 1 else ""
+            for attempt in range(1, args.retries + 1):
+                if not flash_firmware(hex_files[key], port=args.port):
+                    continue
                 ok_coll, parsed_runs = run_hardware_collection(
                     args.port, blk["n_reps"], exp_dir, blk, use_la=args.use_la, suffix=suffix)
+                if ok_coll and len(parsed_runs) >= expected_runs:
+                    break
+                print(f"!! [RETRY {attempt}/{args.retries}] {prefix} failed; resetting MCU and retrying in 2s...",
+                      file=sys.stderr)
+                time.sleep(2.0)
+
             blk["finished_at"] = datetime.datetime.now().isoformat()
             blk["status"] = "ok" if ok_coll else "failed"
             write_schedule(schedule_path, plan)
             if not ok_coll:
                 failed = True
+                _checkpoint_tidy()
                 if args.keep_going:
                     failed_configs.add(key)
                     print(f"!! Bloco {blk['block_order']} falhou; os blocos restantes de {key} serão "
@@ -599,125 +743,19 @@ def main():
                     continue
                 # Interrompe, mas grava as tabelas dos blocos já coletados (veja schedule.json).
                 print(f"!! Bloco {blk['block_order']} falhou; campanha interrompida. "
-                      f"Os blocos anteriores serão salvos.", file=sys.stderr)
+                      f"Os blocos anteriores serão salvos. Resume with: --resume {exp_dir}", file=sys.stderr)
                 break
-            # Create detailed observation records
-            for item in parsed_runs:
-                op_code = item.get("cmd", "")
-                op_name = op_map.get(op_code, item.get("op_name", "").lower())
-                k = (key, op_name)
-                rep_counter[k] = rep_counter.get(k, 0) + 1
-                has_la = item.get("t_la_ms") is not None
-                lat_ms = item["t_la_ms"] if has_la else item["t_exec_ms"]
-                tot_ms = item.get("t_total_ms", lat_ms)
-                clk = blk["clock_mhz"]
-                cycles = item["cycles_la"] if has_la else int(round(lat_ms * clk * 1000))
-                lat_method = "saleae_logic_analyzer_gpio" if has_la else "host_serial_first_byte"
-                raw_records.append({
-                    "run_order": len(raw_records) + 1,
-                    "block": blk["block"],
-                    "block_order": blk["block_order"],
-                    "repetition": rep_counter[k],
-                    "timestamp": item.get("timestamp", datetime.datetime.now().isoformat()),
-                    "algorithm": blk["alg"],
-                    "variant": blk["variant"],
-                    "optimization": blk["opt"],
-                    "clock_mhz": blk["clock_mhz"],
-                    "operation": op_name,
-                    "latency_ms": lat_ms,
-                    "latency_host_serial_ms": item["t_exec_ms"],
-                    "latency_la_gpio_ms": item.get("t_la_ms"),
-                    "total_time_ms": tot_ms,
-                    "cycles": cycles,
-                    "stack_peak_b": item["stack_peak"],
-                    "sram_total_b": item.get("sram_total", 6144),
-                    "sram_headroom_pct": item.get("sram_headroom", round((6144 - item["stack_peak"]) / 6144 * 100.0, 2)),
-                    "payload_bytes": item.get("payload_bytes", 0),
-                    "current_ma": None,
-                    "energy_uj": None,
-                    "kem_validated": item.get("kem_validated"),
-                    "msg_validated": item.get("msg_validated"),
-                    "status": item.get("status", "OK"),
-                    "data_source": "bench",
-                    "latency_method": lat_method,
-                    "energy_method": "not_measured",
-                })
+            _append_combo_records(parsed_runs, blk)
+            _checkpoint_tidy()
+            print(f">> [CHECKPOINT] Saved {len(raw_records)} tidy observations so far.")
 
     if not raw_records:
         sys.exit("!! No observations collected; nothing to aggregate.")
 
-    # 6. Write raw runs CSV + native Tidy Data tables (observations.csv & builds.csv)
+    # 6. Finalize raw tidy CSVs
+    _checkpoint_tidy()
     raw_csv_path = os.path.join(exp_dir, "raw", "runs.csv")
-    obs_csv_path = os.path.join(exp_dir, "raw", "observations.csv")
-    builds_csv_path = os.path.join(exp_dir, "raw", "builds.csv")
-    exp_name = os.path.basename(exp_dir)
-    if raw_records:
-        raw_records.sort(key=lambda x: x["run_order"])
-        with open(raw_csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(raw_records[0].keys()))
-            w.writeheader()
-            w.writerows(raw_records)
-        obs_fields = [
-            "experiment", "timestamp", "run_order", "block_order", "block", "repetition",
-            "algorithm", "variant",
-            "optimization", "clock_mhz", "operation", "t_pa0_ms", "t_uart_ms",
-            "cycles_pa0", "stack_peak_b", "sram_headroom_pct", "payload_bytes",
-            "kem_validated", "msg_validated", "status",
-        ]
-        with open(obs_csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=obs_fields)
-            w.writeheader()
-            for r in raw_records:
-                w.writerow({
-                    "experiment": exp_name,
-                    "timestamp": r.get("timestamp"),
-                    "run_order": r["run_order"],
-                    "block_order": r.get("block_order"),
-                    "block": r.get("block"),
-                    "repetition": r["repetition"],
-                    "algorithm": r["algorithm"],
-                    "variant": r["variant"],
-                    "optimization": r["optimization"],
-                    "clock_mhz": r["clock_mhz"],
-                    "operation": r["operation"],
-                    "t_pa0_ms": r.get("latency_la_gpio_ms"),
-                    "t_uart_ms": r.get("latency_host_serial_ms"),
-                    "cycles_pa0": r.get("cycles"),
-                    "stack_peak_b": r["stack_peak_b"],
-                    "sram_headroom_pct": r.get("sram_headroom_pct"),
-                    "payload_bytes": r.get("payload_bytes", 0),
-                    "kem_validated": r.get("kem_validated"),
-                    "msg_validated": r.get("msg_validated"),
-                    "status": r["status"],
-                })
-        print(f">> [DATA] Saved tidy observations -> {obs_csv_path}")
-
-    # Native tidy firmware size table from compiled .hex files
-    build_rows = []
-    for combo in combos:
-        opt_clean = combo["opt"].lstrip("-")
-        hx = os.path.join(exp_dir, "bin", f"firmware-{combo['alg']}-{combo['variant']}-{combo['clock_mhz']}MHz-{opt_clean}.hex")
-        if os.path.exists(hx):
-            flash_b = 0
-            with open(hx, encoding="ascii") as fh:
-                for line in fh:
-                    if line.startswith(":") and line[7:9] == "00":
-                        flash_b += int(line[1:3], 16)
-            build_rows.append({
-                "algorithm": combo["alg"],
-                "variant": combo["variant"],
-                "optimization": f"-{opt_clean}",
-                "clock_mhz": combo["clock_mhz"],
-                "flash_b": flash_b,
-                "flash_kb": round(flash_b / 1024.0, 2),
-                "flash_free_pct": round(100.0 * (49152 - flash_b) / 49152, 2),
-            })
-    if build_rows:
-        with open(builds_csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(build_rows[0].keys()))
-            w.writeheader()
-            w.writerows(build_rows)
-        print(f">> [DATA] Saved tidy build sizes -> {builds_csv_path}")
+    print(f">> [DATA] Saved tidy observations & builds -> {os.path.join(exp_dir, 'raw')}")
 
     # 7. Aggregate statistics
     summary_csv_path = os.path.join(exp_dir, "summary.csv")
