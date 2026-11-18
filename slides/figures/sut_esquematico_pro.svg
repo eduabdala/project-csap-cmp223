@@ -1,0 +1,312 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 820" width="1400" height="820" font-family="'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, monospace">
+  <defs>
+    <!-- Subtle CAD grid pattern -->
+    <pattern id="cad-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" stroke-width="0.8"/>
+    </pattern>
+    <marker id="arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#1d4ed8"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#047857"/>
+    </marker>
+    <marker id="arr-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Sheet Background & Grid -->
+  <rect width="1400" height="820" fill="#ffffff"/>
+  <rect x="24" y="24" width="1352" height="772" fill="url(#cad-grid)" stroke="#0f172a" stroke-width="2"/>
+  <rect x="30" y="30" width="1340" height="760" fill="none" stroke="#475569" stroke-width="0.8"/>
+
+  <!-- Sheet Zone Labels (A-D, 1-6) -->
+  <g font-size="10" fill="#64748b" text-anchor="middle">
+    <text x="142" y="20">1</text><text x="366" y="20">2</text><text x="590" y="20">3</text>
+    <text x="814" y="20">4</text><text x="1038" y="20">5</text><text x="1262" y="20">6</text>
+    <text x="14" y="130">A</text><text x="14" y="320">B</text><text x="14" y="510">C</text><text x="14" y="700">D</text>
+  </g>
+
+  <!-- ==================== SECTION LABELS (SUBTLE) ==================== -->
+  <g font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700" letter-spacing="0.06em">
+    <text x="48" y="54" fill="#b45309">BLOCO I — ALIMENTAÇÃO LIMPA &amp; REGULAÇÃO (ISOLAMENTO USB)</text>
+    <text x="645" y="54" fill="#1d4ed8">BLOCO II — SHUNT &amp; SUT (PROTOBOARD 400/830 PTS)</text>
+    <text x="1045" y="54" fill="#047857">BLOCO III — INSTRUMENTAÇÃO &amp; HOST</text>
+  </g>
+  <line x1="628" y1="42" x2="628" y2="670" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="1028" y1="42" x2="1028" y2="670" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- ==================== BT1: BATERIA 18650 + SUPORTE ==================== -->
+  <rect x="48" y="155" width="118" height="235" fill="none" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5,3"/>
+  <text x="54" y="172" font-size="10" font-weight="700" fill="#334155">J1: Suporte 18650</text>
+  <text x="54" y="185" font-size="9" fill="#64748b">(encaixe c/ fios)</text>
+
+  <!-- Battery IEC/IEEE Symbol -->
+  <line x1="107" y1="205" x2="107" y2="245" stroke="#b91c1c" stroke-width="2.2"/>
+  <line x1="83" y1="245" x2="131" y2="245" stroke="#0f172a" stroke-width="2.5"/>
+  <line x1="94" y1="257" x2="120" y2="257" stroke="#0f172a" stroke-width="4.5"/>
+  <line x1="83" y1="269" x2="131" y2="269" stroke="#0f172a" stroke-width="2.5"/>
+  <line x1="94" y1="281" x2="120" y2="281" stroke="#0f172a" stroke-width="4.5"/>
+  <line x1="107" y1="281" x2="107" y2="325" stroke="#0f172a" stroke-width="2.2"/>
+  <text x="136" y="242" font-size="12" font-weight="700" fill="#b91c1c">+</text>
+  <text x="136" y="292" font-size="13" font-weight="700" fill="#0f172a">−</text>
+
+  <text x="107" y="348" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">BT1</text>
+  <text x="107" y="363" text-anchor="middle" font-size="10" fill="#334155">Li-Ion 18650</text>
+  <text x="107" y="377" text-anchor="middle" font-size="9.5" fill="#64748b">3,7V (~4,2V)</text>
+
+  <!-- Wires BT1 -> U1 (TP4056) -->
+  <polyline points="107,205 107,225 196,225" fill="none" stroke="#b91c1c" stroke-width="2.2"/>
+  <polyline points="107,325 107,305 196,305" fill="none" stroke="#0f172a" stroke-width="2.2"/>
+
+  <!-- ==================== U1: MÓDULO TP4056 ==================== -->
+  <rect x="196" y="195" width="134" height="145" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+  <text x="202" y="188" font-size="11" font-weight="700" fill="#0f172a">U1: TP4056</text>
+  <text x="263" y="248" text-anchor="middle" font-size="10.5" font-weight="700" fill="#b45309">Carga CC/CV</text>
+  <text x="263" y="264" text-anchor="middle" font-size="9.5" fill="#334155">+ Proteção BMS</text>
+  <text x="263" y="279" text-anchor="middle" font-size="8.5" fill="#64748b">(curto/sobrec./desc.)</text>
+
+  <!-- U1 Pins -->
+  <text x="202" y="229" font-size="9.5" font-weight="700" fill="#b91c1c">B+</text>
+  <text x="202" y="309" font-size="9.5" font-weight="700" fill="#0f172a">B−</text>
+  <text x="296" y="229" font-size="9.5" font-weight="700" fill="#b91c1c">OUT+</text>
+  <text x="296" y="309" font-size="9.5" font-weight="700" fill="#0f172a">OUT−</text>
+
+  <!-- USB-C Receptacle on U1 -->
+  <rect x="236" y="328" width="54" height="16" fill="#e2e8f0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="263" y="339" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0f172a">USB-C</text>
+
+  <!-- ==================== SW1: MINI-SWITCH SPDT ==================== -->
+  <line x1="330" y1="225" x2="368" y2="225" stroke="#b91c1c" stroke-width="2.2"/>
+  <text x="392" y="188" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">SW1</text>
+  <text x="392" y="201" text-anchor="middle" font-size="9" fill="#64748b">SPDT</text>
+
+  <!-- SPDT Schematic Symbol -->
+  <circle cx="372" cy="225" r="3.5" fill="#ffffff" stroke="#b91c1c" stroke-width="2"/>
+  <circle cx="414" cy="215" r="3.5" fill="#ffffff" stroke="#b91c1c" stroke-width="2"/>
+  <circle cx="414" cy="240" r="3.5" fill="#ffffff" stroke="#64748b" stroke-width="1.8"/>
+  <!-- Actuator blade -->
+  <line x1="375" y1="224" x2="411" y2="216" stroke="#b91c1c" stroke-width="2.2"/>
+  <text x="364" y="216" font-size="8" fill="#64748b">COM</text>
+  <text x="418" y="209" font-size="8" fill="#64748b">NO</text>
+  <text x="418" y="247" font-size="8" fill="#64748b">NC</text>
+
+  <!-- Wire SW1 -> U2 (MT3608) -->
+  <polyline points="418,215 432,215 432,225 452,225" fill="none" stroke="#b91c1c" stroke-width="2.2"/>
+
+  <!-- Wire U1 OUT- -> GND & U2 VIN- -->
+  <line x1="330" y1="305" x2="452" y2="305" stroke="#0f172a" stroke-width="2.2"/>
+  <circle cx="348" cy="305" r="3.5" fill="#0f172a"/>
+  <line x1="348" y1="305" x2="348" y2="565" stroke="#0f172a" stroke-width="2"/>
+
+  <!-- ==================== U2: STEP-UP MT3608 ==================== -->
+  <rect x="452" y="195" width="134" height="145" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+  <text x="458" y="188" font-size="11" font-weight="700" fill="#0f172a">U2: MT3608</text>
+  <text x="519" y="242" text-anchor="middle" font-size="10.5" font-weight="700" fill="#b45309">Step-Up DC-DC</text>
+  <text x="519" y="257" text-anchor="middle" font-size="9.5" fill="#334155">3,7 V → 5,00 V</text>
+
+  <!-- Trimpot RV1 symbol inside U2 -->
+  <rect x="492" y="268" width="54" height="22" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+  <circle cx="508" cy="279" r="6" fill="#fef3c7" stroke="#475569" stroke-width="1.2"/>
+  <line x1="504" y1="283" x2="512" y2="275" stroke="#475569" stroke-width="1.2"/>
+  <text x="528" y="283" font-size="8.5" font-weight="700" fill="#334155">RV1</text>
+  <text x="519" y="302" text-anchor="middle" font-size="8.5" fill="#64748b">Trimpot 5,00 V</text>
+
+  <!-- U2 Pins -->
+  <text x="458" y="229" font-size="9.5" font-weight="700" fill="#b91c1c">VIN+</text>
+  <text x="458" y="309" font-size="9.5" font-weight="700" fill="#0f172a">VIN−</text>
+  <text x="546" y="229" font-size="9.5" font-weight="700" fill="#b91c1c">VOUT+</text>
+  <text x="546" y="309" font-size="9.5" font-weight="700" fill="#0f172a">VOUT−</text>
+
+  <!-- U2 VOUT- to GND bus -->
+  <polyline points="586,305 604,305 604,565" fill="none" stroke="#0f172a" stroke-width="2"/>
+
+  <!-- ==================== +5V_REG NET & DMM1 CALIBRATION ==================== -->
+  <line x1="586" y1="225" x2="725" y2="225" stroke="#b91c1c" stroke-width="2.5"/>
+  <text x="652" y="216" text-anchor="middle" font-size="10" font-weight="700" fill="#b91c1c">+5V_REG (5,00 V)</text>
+
+  <!-- TP1 / DMM1 -->
+  <circle cx="604" cy="225" r="3.5" fill="#b91c1c"/>
+  <polyline points="604,225 604,395 568,395" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-gray)"/>
+  <rect x="415" y="365" width="150" height="72" fill="#ffffff" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="490" y="384" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0f172a">DMM1: Multímetro</text>
+  <text x="490" y="400" text-anchor="middle" font-size="9.5" fill="#334155">Calibração prévia</text>
+  <text x="490" y="415" text-anchor="middle" font-size="10" font-weight="700" fill="#b91c1c">V_out = 5,00 V DC</text>
+  <text x="490" y="429" text-anchor="middle" font-size="8.5" fill="#64748b">(sem carga / pré-SUT)</text>
+
+  <!-- ==================== C1: CAPACITOR DE DESACOPLAMENTO ==================== -->
+  <circle cx="668" cy="225" r="3.5" fill="#b91c1c"/>
+  <line x1="668" y1="225" x2="668" y2="288" stroke="#b91c1c" stroke-width="2"/>
+  <!-- Polarized Capacitor Symbol -->
+  <line x1="652" y1="288" x2="684" y2="288" stroke="#0f172a" stroke-width="2.5"/>
+  <path d="M 652 301 Q 668 293 684 301" fill="none" stroke="#0f172a" stroke-width="2.5"/>
+  <text x="646" y="285" font-size="11" font-weight="700" fill="#b91c1c">+</text>
+  <line x1="668" y1="297" x2="668" y2="565" stroke="#0f172a" stroke-width="2"/>
+
+  <text x="690" y="283" font-size="10.5" font-weight="700" fill="#0f172a">C1</text>
+  <text x="690" y="297" font-size="9.5" fill="#334155">10–100 µF</text>
+  <text x="690" y="310" font-size="8.5" fill="#64748b">filtro ~1,2 MHz</text>
+
+  <!-- ==================== R_SHUNT (KELVIN SENSE) ==================== -->
+  <line x1="725" y1="225" x2="740" y2="225" stroke="#b91c1c" stroke-width="2.5"/>
+  <!-- Precision IEEE Zig-zag Resistor -->
+  <polyline points="740,225 745,213 753,237 761,213 769,237 777,213 785,237 790,225" fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linejoin="round"/>
+  <line x1="790" y1="225" x2="835" y2="225" stroke="#b91c1c" stroke-width="2.5"/>
+
+  <text x="765" y="196" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">R_shunt</text>
+  <text x="765" y="209" text-anchor="middle" font-size="9.5" fill="#334155">1 Ω–10 Ω (0,1%–1%)</text>
+
+  <!-- Kelvin Sense Taps S+ and S- -->
+  <circle cx="732" cy="225" r="3.5" fill="#1d4ed8"/>
+  <circle cx="798" cy="225" r="3.5" fill="#1d4ed8"/>
+  <polyline points="732,225 732,125 1055,125" fill="none" stroke="#1d4ed8" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+  <polyline points="798,225 798,145 1055,145" fill="none" stroke="#1d4ed8" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arr-blue)"/>
+  <text x="920" y="118" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1d4ed8">S+ / S− → v_shunt (CH1 ou CH1−CH2)</text>
+
+  <!-- ==================== U3: ARDUINO NANO EVERY (SUT) ==================== -->
+  <rect x="835" y="195" width="172" height="290" fill="#ffffff" stroke="#0f172a" stroke-width="2.2"/>
+  <text x="842" y="188" font-size="11" font-weight="700" fill="#1d4ed8">U3: Arduino Nano Every (SUT)</text>
+
+  <!-- Pin 5V -->
+  <rect x="829" y="219" width="12" height="12" fill="#b91c1c" stroke="#0f172a" stroke-width="1"/>
+  <text x="846" y="229" font-size="10" font-weight="700" fill="#b91c1c">5V</text>
+
+  <!-- ATmega4809 IC -->
+  <rect x="850" y="248" width="142" height="96" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.5"/>
+  <text x="921" y="266" text-anchor="middle" font-size="11" font-weight="700" fill="#1e3a8a">ATmega4809</text>
+  <text x="921" y="281" text-anchor="middle" font-size="9" fill="#1e293b">AVRxt 8-bit | 20 MHz</text>
+  <text x="921" y="295" text-anchor="middle" font-size="9" fill="#1e293b">(clock int., sem prescaler)</text>
+  <text x="921" y="310" text-anchor="middle" font-size="9" fill="#1e293b">48 KB Flash | 6 KB SRAM</text>
+  <text x="921" y="324" text-anchor="middle" font-size="9" fill="#1e293b">256 B EEPROM | 5,0 V</text>
+
+  <!-- Internal Bus: UPDI / USART3 -->
+  <line x1="921" y1="344" x2="921" y2="372" stroke="#475569" stroke-width="1.5" marker-start="url(#arr-gray)" marker-end="url(#arr-gray)"/>
+  <text x="928" y="362" font-size="8.5" font-weight="700" fill="#475569">UPDI / PB4-PB5</text>
+
+  <!-- ATSAMD11D14A IC -->
+  <rect x="850" y="374" width="142" height="66" fill="#f8fafc" stroke="#475569" stroke-width="1.5"/>
+  <text x="921" y="392" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0f172a">ATSAMD11D14A</text>
+  <text x="921" y="407" text-anchor="middle" font-size="9" fill="#334155">Ponte USB-Serial + UPDI</text>
+  <text x="921" y="421" text-anchor="middle" font-size="8.5" fill="#64748b">(subtraído no baseline)</text>
+
+  <!-- Pin D2 (PA0) -->
+  <rect x="1001" y="294" width="12" height="12" fill="#047857" stroke="#0f172a" stroke-width="1"/>
+  <text x="955" y="304" font-size="9.5" font-weight="700" fill="#047857">D2(PA0)</text>
+
+  <!-- Pin GND -->
+  <rect x="866" y="479" width="12" height="12" fill="#0f172a"/>
+  <text x="872" y="472" text-anchor="middle" font-size="9.5" font-weight="700" fill="#0f172a">GND</text>
+
+  <!-- J2: Micro-USB -->
+  <rect x="900" y="472" width="66" height="18" fill="#e2e8f0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="933" y="484" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0f172a">J2: µUSB</text>
+
+  <!-- ==================== INSTRUMENTAÇÃO & HOST ==================== -->
+  <!-- OSC1: Osciloscópio Digital -->
+  <rect x="1055" y="105" width="275" height="135" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+  <text x="1062" y="98" font-size="11" font-weight="700" fill="#1d4ed8">OSC1: Osciloscópio Digital (≥ 2 ch)</text>
+  <text x="1070" y="129" font-size="10" font-weight="700" fill="#1d4ed8">CH1 / (CH1−CH2):</text>
+  <text x="1080" y="144" font-size="9.5" fill="#334155">v_shunt → I_SUT(t) = v_shunt / R_shunt</text>
+  <line x1="1068" y1="158" x2="1316" y2="158" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="1070" y="180" font-size="10" font-weight="700" fill="#047857">CH2 (External Trigger):</text>
+  <text x="1080" y="195" font-size="9.5" fill="#334155">Borda de subida/descida em D2 (PA0)</text>
+  <text x="1070" y="222" font-size="9" fill="#64748b">Ref. GND comum (acoplamento DC)</text>
+
+  <!-- LA1: Analisador Lógico USB -->
+  <rect x="1055" y="275" width="275" height="110" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+  <text x="1062" y="268" font-size="11" font-weight="700" fill="#047857">LA1: Analisador Lógico USB</text>
+  <text x="1070" y="300" font-size="10" font-weight="700" fill="#047857">CH0 (24 MHz, 8 canais):</text>
+  <text x="1080" y="317" font-size="9.5" fill="#334155">Captura janela GPIO D2 (PA0)</text>
+  <text x="1080" y="335" font-size="10" font-weight="700" fill="#0f172a">T_exec = t1 − t0 (precisão ns)</text>
+  <text x="1070" y="366" font-size="9" fill="#64748b">Ref. GND comum</text>
+
+  <!-- GPIO Trigger Signal Routing -->
+  <line x1="1013" y1="300" x2="1038" y2="300" stroke="#047857" stroke-width="2.2"/>
+  <circle cx="1038" cy="300" r="3.5" fill="#047857"/>
+  <polyline points="1038,300 1038,182 1055,182" fill="none" stroke="#047857" stroke-width="2" marker-end="url(#arr-green)"/>
+  <line x1="1038" y1="300" x2="1055" y2="300" stroke="#047857" stroke-width="2" marker-end="url(#arr-green)"/>
+
+  <!-- HOST1: Computador Host -->
+  <rect x="1055" y="425" width="275" height="115" fill="#f8fafc" stroke="#64748b" stroke-width="1.8" stroke-dasharray="5,4"/>
+  <text x="1062" y="418" font-size="11" font-weight="700" fill="#334155">HOST1: Computador Host (PC)</text>
+  <text x="1070" y="450" font-size="9.5" fill="#334155">• Gravação firmware via UPDI</text>
+  <text x="1070" y="468" font-size="9.5" fill="#334155">• Coleta serial Stack Watermarking</text>
+  <rect x="1068" y="482" width="248" height="44" fill="#fef2f2" stroke="#b91c1c" stroke-width="1"/>
+  <text x="1076" y="500" font-size="9.5" font-weight="700" fill="#b91c1c">DESCONECTADO na captura de energia</text>
+  <text x="1076" y="516" font-size="8.5" fill="#991b1b">(evita ruído de chaveamento / alimentação USB)</text>
+
+  <!-- Micro-USB dashed link -->
+  <polyline points="933,490 933,512 1055,512" fill="none" stroke="#64748b" stroke-width="1.8" stroke-dasharray="5,3" marker-start="url(#arr-gray)" marker-end="url(#arr-gray)"/>
+  <text x="994" y="505" text-anchor="middle" font-size="8.5" font-weight="700" fill="#475569">Cabo µUSB</text>
+
+  <!-- ==================== MALHA GND COMUM ==================== -->
+  <!-- Main GND Rail at y=565 -->
+  <line x1="348" y1="565" x2="1348" y2="565" stroke="#0f172a" stroke-width="2.5"/>
+  <line x1="872" y1="491" x2="872" y2="565" stroke="#0f172a" stroke-width="2"/>
+  <polyline points="1348,565 1348,220 1330,220" fill="none" stroke="#0f172a" stroke-width="1.8"/>
+  <line x1="1348" y1="362" x2="1330" y2="362" stroke="#0f172a" stroke-width="1.8"/>
+
+  <!-- Junction dots on GND rail -->
+  <circle cx="348" cy="565" r="3.5" fill="#0f172a"/>
+  <circle cx="604" cy="565" r="3.5" fill="#0f172a"/>
+  <circle cx="668" cy="565" r="3.5" fill="#0f172a"/>
+  <circle cx="872" cy="565" r="3.5" fill="#0f172a"/>
+  <circle cx="1348" cy="362" r="3.5" fill="#0f172a"/>
+
+  <!-- Ground Symbols (IEEE) -->
+  <g stroke="#0f172a" stroke-width="2">
+    <!-- GND 1 -->
+    <line x1="490" y1="565" x2="490" y2="585"/>
+    <line x1="474" y1="585" x2="506" y2="585"/>
+    <line x1="480" y1="591" x2="500" y2="591"/>
+    <line x1="486" y1="597" x2="494" y2="597"/>
+    <!-- GND 2 -->
+    <line x1="872" y1="565" x2="872" y2="585"/>
+    <line x1="856" y1="585" x2="888" y2="585"/>
+    <line x1="862" y1="591" x2="882" y2="591"/>
+    <line x1="868" y1="597" x2="876" y2="597"/>
+  </g>
+  <text x="515" y="592" font-size="10" font-weight="700" fill="#0f172a">GND COMUM</text>
+  <text x="896" y="592" font-size="10" font-weight="700" fill="#0f172a">GND COMUM (Malha de Referência)</text>
+
+  <!-- ==================== LEGENDA (ESQ) & TITLE BLOCK CAD (DIR) ==================== -->
+  <!-- Legend Box -->
+  <rect x="44" y="655" width="760" height="120" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+  <text x="58" y="676" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700" fill="#0f172a">LEGENDA DE REDES &amp; MONTAGEM FÍSICA</text>
+
+  <line x1="58" y1="698" x2="98" y2="698" stroke="#b91c1c" stroke-width="2.5"/>
+  <text x="108" y="702" font-size="10" fill="#0f172a">+V_BAT / +5V_REG / +5V_SUT (alimentação limpa)</text>
+
+  <line x1="430" y1="698" x2="470" y2="698" stroke="#0f172a" stroke-width="2.5"/>
+  <text x="480" y="702" font-size="10" fill="#0f172a">GND (malha de terra comum)</text>
+
+  <line x1="58" y1="723" x2="98" y2="723" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="108" y="727" font-size="10" fill="#0f172a">Sense analógico v_shunt (Kelvin → OSC1 CH1)</text>
+
+  <line x1="430" y1="723" x2="470" y2="723" stroke="#047857" stroke-width="2"/>
+  <text x="480" y="727" font-size="10" fill="#0f172a">Trigger digital D2/PA0 (OSC1 CH2 + LA1)</text>
+
+  <line x1="58" y1="748" x2="98" y2="748" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4,3"/>
+  <text x="108" y="752" font-size="10" fill="#334155">Conexão temporária (DMM1 calibração / µUSB apenas gravação UPDI &amp; Stack)</text>
+
+  <text x="58" y="768" font-size="9" fill="#64748b">Montagem: Protoboard 400/830 pts + Jumpers M-M / M-F | Energia: E_op = ∫ (V_SUT · v_shunt / R_shunt) dt</text>
+
+  <!-- Engineering Title Block (Cartela CAD) -->
+  <rect x="820" y="655" width="535" height="120" fill="#f8fafc" stroke="#0f172a" stroke-width="1.8"/>
+  <line x1="820" y1="692" x2="1355" y2="692" stroke="#0f172a" stroke-width="1"/>
+  <line x1="820" y1="734" x2="1355" y2="734" stroke="#0f172a" stroke-width="1"/>
+  <line x1="1150" y1="692" x2="1150" y2="775" stroke="#0f172a" stroke-width="1"/>
+
+  <text x="832" y="678" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f172a">ESQUEMÁTICO DO SUT &amp; BANCADA DE MEDIÇÃO</text>
+  <text x="832" y="710" font-size="9.5" fill="#475569">PROJETO: CMP223 — Avaliação PQC em Embarcados</text>
+  <text x="832" y="726" font-size="9.5" fill="#0f172a">SUT: Arduino Nano Every (ATmega4809 @ 20 MHz)</text>
+
+  <text x="1162" y="710" font-size="9.5" fill="#475569">PADRÃO: IEC/IEEE</text>
+  <text x="1162" y="726" font-size="9.5" fill="#0f172a">ALIM.: 5,00 V (Bateria)</text>
+
+  <text x="832" y="752" font-size="9.5" fill="#475569">AUTOR: Eduardo S. Abdala (INF-UFRGS)</text>
+  <text x="832" y="767" font-size="9" fill="#64748b">ARQUIVO: sut_esquematico_pro.svg</text>
+
+  <text x="1162" y="752" font-size="9.5" fill="#0f172a">REV: 2.0</text>
+  <text x="1162" y="767" font-size="9.5" fill="#0f172a">FOLHA: 1 / 1</text>
+</svg>
