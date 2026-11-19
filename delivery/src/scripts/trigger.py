@@ -52,11 +52,68 @@ OP_NAMES = {
     "P": "Ping",
 }
 
+# seed_bytes = RNG_POOL_SIZE do firmware (main.c): a semente vai inteira para o pool.
 ALG_PARAMS = {
-    "kyber512": {"ct_bytes": 768, "ss_bytes": 32, "pk_bytes": 800},
-    "ctru-light": {"ct_bytes": 512, "ss_bytes": 16, "pk_bytes": 640},
-    "ecdh": {"ct_bytes": 64, "ss_bytes": 32, "pk_bytes": 64},
+    "kyber512": {"ct_bytes": 768, "ss_bytes": 32, "pk_bytes": 800, "seed_bytes": 64},
+    "ctru-light": {"ct_bytes": 512, "ss_bytes": 16, "pk_bytes": 640, "seed_bytes": 128},
+    "ecdh": {"ct_bytes": 64, "ss_bytes": 32, "pk_bytes": 64, "seed_bytes": 64},
 }
+
+# ---- Verificação independente do ECDH (secp256r1) no host -------------------
+# A semente enviada antes de cada K/E vai inteira para o pool da placa, e o
+# micro-ecc lê a chave privada dos 32 primeiros bytes (inteiro little-endian,
+# uECC_generate_random_int). Assim o host recalcula a chave pública e o segredo
+# esperados e indica qual operação da placa diverge.
+P256_P = 2**256 - 2**224 + 2**192 + 2**96 - 1
+P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+P256_B = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
+P256_G = (0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
+          0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5)
+
+
+def _p256_add(a, b):
+    if a is None:
+        return b
+    if b is None:
+        return a
+    if a[0] == b[0] and (a[1] + b[1]) % P256_P == 0:
+        return None
+    if a == b:
+        lam = (3 * a[0] * a[0] - 3) * pow(2 * a[1], -1, P256_P)
+    else:
+        lam = (b[1] - a[1]) * pow(b[0] - a[0], -1, P256_P)
+    x = (lam * lam - a[0] - b[0]) % P256_P
+    return x, (lam * (a[0] - x) - a[1]) % P256_P
+
+
+def p256_mul(k: int, pt):
+    acc = None
+    for bit in bin(k)[2:]:
+        acc = _p256_add(acc, acc)
+        if bit == "1":
+            acc = _p256_add(acc, pt)
+    return acc
+
+
+def p256_point(raw: bytes):
+    """Ponto X||Y (big-endian, formato do micro-ecc) ou None se fora da curva."""
+    if len(raw) != 64:
+        return None
+    x, y = int.from_bytes(raw[:32], "big"), int.from_bytes(raw[32:], "big")
+    if x >= P256_P or y >= P256_P or (y * y - (x * x * x - 3 * x + P256_B)) % P256_P:
+        return None
+    return x, y
+
+
+def p256_bytes(pt) -> bytes:
+    return pt[0].to_bytes(32, "big") + pt[1].to_bytes(32, "big")
+
+
+def ecdh_priv_from_seed(seed: bytes | None) -> int | None:
+    if not seed:
+        return None
+    d = int.from_bytes(seed[:32], "little")
+    return d if 0 < d < P256_N else None  # caso contrário a placa sorteia de novo
 
 
 def stream_xor(data: bytes, key: bytes) -> bytes:
@@ -385,26 +442,29 @@ def open_serial(port: str, baud: int) -> int:
     return fd
 
 
-def send_seed(fd: int, timeout: float) -> bool:
-    """Injeta 64 bytes de os.urandom no pool de entropia da placa (comando 'S').
+def send_seed(fd: int, timeout: float, n: int) -> bytes | None:
+    """Injeta n bytes de os.urandom no pool de entropia da placa (comando 'S').
 
-    Feito FORA da janela de medição; a placa mistura com ruído do ADC e consome
-    a semente no próximo K/E.
+    Feito FORA da janela de medição. A placa usa a semente como está no próximo
+    K/E/D, então a execução é reprodutível a partir da semente registrada na
+    telemetria (campo rng_seed). Devolve a semente, ou None se a placa não
+    confirmou.
     """
+    seed = os.urandom(n)
     termios.tcflush(fd, termios.TCIFLUSH)
-    os.write(fd, b"S" + os.urandom(64))
+    os.write(fd, b"S" + seed)
     expected = b"s\r\nDONE S\r\n"
     buf = b""
     deadline = time.perf_counter() + min(timeout, 2.0)
     while not buf.endswith(expected):
         rem = deadline - time.perf_counter()
         if rem <= 0:
-            return False
+            return None
         r, _, _ = select.select([fd], [], [], rem)
         if not r:
-            return False
+            return None
         buf += os.read(fd, 256)
-    return True
+    return seed
 
 
 def run_single_cmd(
@@ -419,6 +479,8 @@ def run_single_cmd(
 ) -> dict | None:
     termios.tcflush(fd, termios.TCIFLUSH)
     t0 = time.perf_counter()
+    alg_info = ALG_PARAMS.get(alg, ALG_PARAMS["kyber512"])
+    seed = None
 
     if cmd == "M":
         # Usa a chave compartilhada gerada no Encaps (ou Decaps) para cifrar a mensagem no PC
@@ -438,9 +500,11 @@ def run_single_cmd(
         t0 = time.perf_counter()
         os.write(fd, b"M" + bytes([len(ct_msg)]) + ct_msg)
     else:
-        if cmd in ("K", "E") and not send_seed(fd, timeout):
-            print("Aviso: placa não confirmou a semente (firmware antigo?). Seguindo com entropia do ADC.",
-                  file=sys.stderr)
+        if cmd in ("K", "E", "D"):
+            seed = send_seed(fd, timeout, alg_info["seed_bytes"])
+            if seed is None:
+                print("Aviso: placa não confirmou a semente (firmware antigo?). Seguindo com entropia local.",
+                      file=sys.stderr)
         t0 = time.perf_counter()
         os.write(fd, cmd.encode("ascii"))
 
@@ -491,12 +555,14 @@ def run_single_cmd(
         return {"cmd": "P", "t_exec_ms": t_exec * 1000.0, "t_total_ms": t_total * 1000.0}
 
     ack = chr(buf[0]) if buf else "?"
-    if ack == "?" or len(buf) < 3:
+    if ack == "?" or len(buf) < 4:
         print(f"Resposta inesperada ({len(buf)} bytes): {buf!r}", file=sys.stderr)
         return None
 
+    # Cabeçalho: ack, pico de pilha (u16 big-endian), código de retorno da função (i8, 0 = OK).
     stack_peak = (buf[1] << 8) | buf[2]
-    payload = buf[3:]
+    kem_rc = struct.unpack("b", buf[3:4])[0]
+    payload = buf[4:]
     done_msg = None
     if payload.endswith(trailer):
         done_msg = f"DONE {cmd}"
@@ -512,12 +578,14 @@ def run_single_cmd(
     print(f"Tempo (janela) : {t_exec * 1000:.2f} ms  (aprox. via serial até 1º byte)")
     print(f"Tempo total    : {t_total * 1000:.2f} ms  (incluindo envio de {len(payload)} B na UART)")
     print(f"Stack Peak     : {stack_peak} B / {sram_total} B  (margem: {sram_headroom:.1f}%)")
+    if kem_rc != 0:
+        print(f"[ERRO] Função criptográfica retornou {kem_rc} (a medição segue, marcada em kem_rc)",
+              file=sys.stderr)
 
     if cmd == "K":
         state.pop("ss_enc", None)  # novo par de chaves invalida a sessão anterior
         state.pop("ss_dec", None)
 
-    alg_info = ALG_PARAMS.get(alg, ALG_PARAMS["kyber512"])
     ct_len = alg_info["ct_bytes"]
     ss_len = alg_info["ss_bytes"]
 
@@ -563,6 +631,35 @@ def run_single_cmd(
     if cmd == "D" and len(payload) == ss_len and "ss_enc" in state:
         kem_val = bool(state["ss_enc"] == payload)
 
+    # ECDH: confere a saída da placa contra o cálculo independente do host.
+    #   K: pk == d*G          E: ct == e*G e ss == x(e*pk)          D: ss == x(d*ct)
+    # None = não verificável (sem semente ou chave privada fora do intervalo).
+    ecdh_ok = None
+    if alg == "ecdh":
+        if cmd == "K":
+            d = ecdh_priv_from_seed(seed)
+            state["ecdh_d"] = d
+            state["ecdh_pk"] = p256_point(payload[:64])
+            if d is not None:
+                ecdh_ok = payload[:64] == p256_bytes(p256_mul(d, P256_G))
+        elif cmd == "E" and len(payload) >= ct_len + ss_len:
+            e = ecdh_priv_from_seed(seed)
+            pk_pt = state.get("ecdh_pk")
+            if e is not None and pk_pt is not None:
+                ct_ok = payload[:64] == p256_bytes(p256_mul(e, P256_G))
+                ss_ok = payload[64:96] == p256_mul(e, pk_pt)[0].to_bytes(32, "big")
+                ecdh_ok = ct_ok and ss_ok
+                if not ecdh_ok:
+                    print(f"[ERRO] ECDH Encaps: ct {'OK' if ct_ok else 'divergente'}, "
+                          f"ss {'OK' if ss_ok else 'divergente'} do cálculo no host", file=sys.stderr)
+            state["ecdh_ct"] = p256_point(payload[:64])
+        elif cmd == "D" and len(payload) == ss_len:
+            d, ct_pt = state.get("ecdh_d"), state.get("ecdh_ct")
+            if d is not None and ct_pt is not None:
+                ecdh_ok = payload == p256_mul(d, ct_pt)[0].to_bytes(32, "big")
+        if ecdh_ok is False and cmd != "E":
+            print(f"[ERRO] ECDH {OP_NAMES[cmd]}: saída diverge do cálculo no host", file=sys.stderr)
+
     msg_val = None
     if cmd == "M":
         dec_text = payload.decode("utf-8", errors="replace")
@@ -581,6 +678,9 @@ def run_single_cmd(
         "payload_bytes": len(payload),
         "kem_validated": kem_val,
         "msg_validated": msg_val,
+        "kem_rc": kem_rc,
+        "ecdh_host_check": ecdh_ok,
+        "rng_seed": seed.hex() if seed else None,
         "status": "OK" if (done_msg or buf) else "FAIL",
     }
 

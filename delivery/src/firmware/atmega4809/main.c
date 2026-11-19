@@ -22,6 +22,8 @@
 #include <string.h>
 #include "kem.h"
 
+extern void kem_rng_install(void);   /* common/rng_glue.c */
+
 /* ---- Configuration --------------------------------------- */
 #ifndef F_CPU
 #define F_CPU 20000000UL
@@ -170,20 +172,44 @@ static void stream_xor(uint8_t *buf, uint8_t len, const uint8_t key[KEM_BYTES]) 
 }
 
 /* ---- Entropy pool for randombytes() ---------------------- */
-/* The ATmega4809 has no TRNG. The pool is filled OUTSIDE the measured window
- * from (a) ADC noise LSBs of the internal temperature sensor and (b) an
- * optional 64-byte seed injected by the host ('S' command, os.urandom).
- * Inside the window, randombytes() only copies from the pool, so the
- * latency measurement is not affected by entropy collection. */
+/* The ATmega4809 has no TRNG. The pool is filled OUTSIDE the measured window,
+ * before every K/E/D, from the RNG_POOL_SIZE-byte seed injected by the host
+ * ('S' command). The seed is used as is (not mixed with local noise), so each
+ * run is reproducible from the seed the host logs in the telemetry. Without a
+ * host seed the pool falls back to ADC noise LSBs of the temperature sensor.
+ * Inside the window, randombytes() only copies from the pool (common/rng_glue.c),
+ * so the latency measurement is not affected by entropy collection.
+ *
+ * Consumption per operation: Kyber-512 KeyGen 64 B, ECDH Encaps 64 B,
+ * CTRU-Light KeyGen 16 B per attempt + 16 B. For CTRU-Light the pool is 128 B
+ * (up to 7 rejected attempts; it has SRAM to spare), for the others 64 B (the
+ * Kyber-512 SRAM margin is ~60 B). If an operation consumes more than the
+ * pool, it is stirred, never replayed: a replayed seed would make the
+ * CTRU-Light rejection loop cycle. The host sends exactly RNG_POOL_SIZE bytes
+ * (trigger.py, ALG_PARAMS["seed_bytes"]). */
+#if defined(ALG_CTRU)
+#define RNG_POOL_SIZE 128
+#else
 #define RNG_POOL_SIZE 64
-static uint8_t rng_pool[RNG_POOL_SIZE];
-static uint8_t host_seed[RNG_POOL_SIZE];
+#endif
+static uint8_t rng_pool[RNG_POOL_SIZE];   /* 'S' writes the host seed here directly */
+static uint8_t host_seed_ok;
 static uint8_t rng_idx;
+static uint8_t rng_epoch;
+
+static void rng_stir(void) {
+    uint8_t s = (uint8_t)(0x9D + ++rng_epoch);
+    for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
+        s = (uint8_t)((uint8_t)(s * 5u + 0x3Bu) ^ rng_pool[(uint8_t)(i + 1u) % RNG_POOL_SIZE]);
+        rng_pool[i] ^= s;
+    }
+    rng_idx = 0;
+}
 
 void harness_rng_read(uint8_t *buf, size_t n) {
     for (size_t i = 0; i < n; i++) {
-        buf[i] = rng_pool[rng_idx];
-        rng_idx = (uint8_t)((rng_idx + 1) % RNG_POOL_SIZE);
+        if (rng_idx >= RNG_POOL_SIZE) rng_stir();
+        buf[i] = rng_pool[rng_idx++];
     }
 }
 
@@ -205,63 +231,77 @@ static uint8_t adc_noise_byte(void) {
     return b;
 }
 
-/* Refill before each KeyGen/Encaps; the host seed is consumed once. */
+/* Refill before each K/E/D (outside the window); the host seed is used once. */
 static void rng_refill(void) {
-    for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
-        rng_pool[i] = adc_noise_byte() ^ host_seed[i];
+    if (!host_seed_ok) {
+        for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
+            rng_pool[i] = adc_noise_byte();
+        }
     }
-    memset(host_seed, 0, sizeof(host_seed));
+    host_seed_ok = 0;
     rng_idx = 0;
+    rng_epoch = 0;
 }
 
 static void do_seed(void) {
     for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
-        host_seed[i] = uart_rx();
+        rng_pool[i] = uart_rx();
     }
+    host_seed_ok = 1;
     uart_tx('s');
     uart_tx_str("\r\nDONE S\r\n");
 }
 
 /* ---- Per-operation measurement routine ------------------- */
-/* Wraps the crypto call in the GPIO window, with interrupts disabled. */
-#define MEASURE(call) do {         \
+/* Wraps the crypto call in the GPIO window, with interrupts disabled. The
+ * return code (0 = success) is stored inside the window (1 register move) and
+ * reported after the stack peak, so failures are flagged per run. */
+#define MEASURE(rc, call) do {     \
         cli();                     \
         window_high();             \
-        (void)(call);              \
+        (rc) = (int8_t)(call);     \
         window_low();              \
         sei();                     \
     } while (0)
 
+/* Reply header: ack, stack peak (u16, big-endian), return code (i8). */
+static void reply_header(uint8_t ack, int8_t rc) {
+    uart_tx(ack);
+    uart_tx_u16(stack_peak());
+    uart_tx((uint8_t)rc);
+}
+
 static void do_keygen(void) {
+    int8_t rc;
     rng_refill();                    /* entropia coletada FORA da janela */
     stack_paint();
     id_pulses(1);                    /* 1 pulso no PA0 (D2) antes da janela */
-    MEASURE(kem_keypair(pk, sk));
-    uart_tx('k');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_keypair(pk, sk));
+    reply_header('k', rc);
     uart_tx_buf(pk, KEM_PUBLICKEYBYTES);
     uart_tx_str("\r\nDONE K\r\n");
 }
 
 static void do_encaps(void) {
+    int8_t rc;
     rng_refill();                    /* entropia coletada FORA da janela */
     stack_paint();
     id_pulses(2);                    /* 2 pulsos no PA0 (D2) antes da janela */
-    MEASURE(kem_enc(ct, ss_enc, pk));
-    uart_tx('e');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_enc(ct, ss_enc, pk));
+    reply_header('e', rc);
     uart_tx_buf(ct, KEM_CIPHERTEXTBYTES);
     uart_tx_buf(ss_enc, KEM_BYTES);
     uart_tx_str("\r\nDONE E\r\n");
 }
 
 static void do_decaps(void) {
+    int8_t rc;
     memset(ss, 0, KEM_BYTES);
+    rng_refill();                    /* ECDH usa RNG no Decaps (Z aleatório); FORA da janela */
     stack_paint();
     id_pulses(3);                    /* 3 pulsos no PA0 (D2) antes da janela */
-    MEASURE(kem_dec(ss, ct, sk));
-    uart_tx('d');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_dec(ss, ct, sk));
+    reply_header('d', rc);
     uart_tx_buf(ss, KEM_BYTES);
     uart_tx_str("\r\nDONE D\r\n");
 }
@@ -274,9 +314,12 @@ static void do_msg(void) {
     }
     stack_paint();
     id_pulses(4);                    /* 4 pulsos no PA0 (D2) antes da janela */
-    MEASURE(stream_xor(msg_buf, len, ss));
-    uart_tx('m');
-    uart_tx_u16(stack_peak());
+    cli();
+    window_high();
+    stream_xor(msg_buf, len, ss);
+    window_low();
+    sei();
+    reply_header('m', 0);
     uart_tx_buf(msg_buf, len);
     uart_tx_str("\r\nDONE M\r\n");
 }
@@ -287,6 +330,7 @@ int main(void) {
     window_low();
     uart_init();
     adc_entropy_init();
+    kem_rng_install();               /* liga o RNG dos algoritmos ao pool (rng_glue.c) */
 
     /* Padrão de inicialização da main no PA0 (D2): 5 pulsos */
     id_pulses(5);

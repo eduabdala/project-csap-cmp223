@@ -154,16 +154,34 @@ static void stream_xor(uint8_t *buf, uint8_t len, const uint8_t key[KEM_BYTES]) 
     }
 }
 
-/* ---- Entropy pool (ROSC randombit + host seed) ----------- */
+/* ---- Entropy pool (host seed, ROSC randombit fallback) --- */
+/* Same protocol as the ATmega4809 harness: the host seed is used as is, so
+ * each run is reproducible from the seed logged in the telemetry; the pool
+ * is stirred (never replayed) if an operation consumes more than its size.
+ * Pool size per algorithm must match trigger.py ALG_PARAMS["seed_bytes"]. */
+#if defined(ALG_CTRU)
+#define RNG_POOL_SIZE 128
+#else
 #define RNG_POOL_SIZE 64
-static uint8_t rng_pool[RNG_POOL_SIZE];
-static uint8_t host_seed[RNG_POOL_SIZE];
+#endif
+static uint8_t rng_pool[RNG_POOL_SIZE];   /* 'S' writes the host seed here directly */
+static uint8_t host_seed_ok;
 static uint8_t rng_idx;
+static uint8_t rng_epoch;
+
+static void rng_stir(void) {
+    uint8_t s = (uint8_t)(0x9D + ++rng_epoch);
+    for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
+        s = (uint8_t)((uint8_t)(s * 5u + 0x3Bu) ^ rng_pool[(uint8_t)(i + 1u) % RNG_POOL_SIZE]);
+        rng_pool[i] ^= s;
+    }
+    rng_idx = 0;
+}
 
 void harness_rng_read(uint8_t *buf, size_t n) {
     for (size_t i = 0; i < n; i++) {
-        buf[i] = rng_pool[rng_idx];
-        rng_idx = (uint8_t)((rng_idx + 1) % RNG_POOL_SIZE);
+        if (rng_idx >= RNG_POOL_SIZE) rng_stir();
+        buf[i] = rng_pool[rng_idx++];
     }
 }
 
@@ -177,60 +195,72 @@ static uint8_t rosc_noise_byte(void) {
 }
 
 static void rng_refill(void) {
-    for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
-        rng_pool[i] = rosc_noise_byte() ^ host_seed[i];
+    if (!host_seed_ok) {
+        for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
+            rng_pool[i] = rosc_noise_byte();
+        }
     }
-    memset(host_seed, 0, sizeof(host_seed));
+    host_seed_ok = 0;
     rng_idx = 0;
+    rng_epoch = 0;
 }
 
 static void do_seed(void) {
     for (uint8_t i = 0; i < RNG_POOL_SIZE; i++) {
-        host_seed[i] = uart_rx();
+        rng_pool[i] = uart_rx();
     }
+    host_seed_ok = 1;
     uart_tx('s');
     uart_tx_str("\r\nDONE S\r\n");
 }
 
 /* ---- Per-operation measurement routine ------------------- */
-#define MEASURE(call) do {                              \
+#define MEASURE(rc, call) do {                          \
         uint32_t _irq = save_and_disable_interrupts();  \
         window_high();                                  \
-        (void)(call);                                   \
+        (rc) = (int8_t)(call);                          \
         window_low();                                   \
         restore_interrupts(_irq);                       \
     } while (0)
 
+/* Reply header: ack, stack peak (u16, big-endian), return code (i8). */
+static void reply_header(uint8_t ack, int8_t rc) {
+    uart_tx(ack);
+    uart_tx_u16(stack_peak());
+    uart_tx((uint8_t)rc);
+}
+
 static void do_keygen(void) {
+    int8_t rc;
     rng_refill();
     stack_paint();
     id_pulses(1);
-    MEASURE(kem_keypair(pk, sk));
-    uart_tx('k');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_keypair(pk, sk));
+    reply_header('k', rc);
     uart_tx_buf(pk, KEM_PUBLICKEYBYTES);
     uart_tx_str("\r\nDONE K\r\n");
 }
 
 static void do_encaps(void) {
+    int8_t rc;
     rng_refill();
     stack_paint();
     id_pulses(2);
-    MEASURE(kem_enc(ct, ss_enc, pk));
-    uart_tx('e');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_enc(ct, ss_enc, pk));
+    reply_header('e', rc);
     uart_tx_buf(ct, KEM_CIPHERTEXTBYTES);
     uart_tx_buf(ss_enc, KEM_BYTES);
     uart_tx_str("\r\nDONE E\r\n");
 }
 
 static void do_decaps(void) {
+    int8_t rc;
     memset(ss, 0, KEM_BYTES);
+    rng_refill();
     stack_paint();
     id_pulses(3);
-    MEASURE(kem_dec(ss, ct, sk));
-    uart_tx('d');
-    uart_tx_u16(stack_peak());
+    MEASURE(rc, kem_dec(ss, ct, sk));
+    reply_header('d', rc);
     uart_tx_buf(ss, KEM_BYTES);
     uart_tx_str("\r\nDONE D\r\n");
 }
@@ -243,9 +273,14 @@ static void do_msg(void) {
     }
     stack_paint();
     id_pulses(4);
-    MEASURE(stream_xor(msg_buf, len, ss));
-    uart_tx('m');
-    uart_tx_u16(stack_peak());
+    {
+        uint32_t _irq = save_and_disable_interrupts();
+        window_high();
+        stream_xor(msg_buf, len, ss);
+        window_low();
+        restore_interrupts(_irq);
+    }
+    reply_header('m', 0);
     uart_tx_buf(msg_buf, len);
     uart_tx_str("\r\nDONE M\r\n");
 }

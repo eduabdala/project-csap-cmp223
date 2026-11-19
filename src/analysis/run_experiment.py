@@ -563,6 +563,9 @@ def main():
                 "energy_uj": None,
                 "kem_validated": item.get("kem_validated"),
                 "msg_validated": item.get("msg_validated"),
+                "kem_rc": item.get("kem_rc"),
+                "ecdh_host_check": item.get("ecdh_host_check"),
+                "rng_seed": item.get("rng_seed"),
                 "status": item.get("status", "OK"),
                 "data_source": "bench",
                 "latency_method": lat_method,
@@ -584,7 +587,8 @@ def main():
                 "experiment", "timestamp", "run_order", "block_order", "block", "repetition",
                 "algorithm", "variant", "optimization", "clock_mhz", "operation",
                 "t_pa0_ms", "t_uart_ms", "cycles_pa0", "stack_peak_b",
-                "sram_headroom_pct", "payload_bytes", "kem_validated", "msg_validated", "status",
+                "sram_headroom_pct", "payload_bytes", "kem_validated", "msg_validated",
+                "kem_rc", "ecdh_host_check", "rng_seed", "status",
             ]
             with open(obs_csv_path, "w", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=obs_fields)
@@ -610,6 +614,9 @@ def main():
                         "payload_bytes": r.get("payload_bytes", 0),
                         "kem_validated": r.get("kem_validated"),
                         "msg_validated": r.get("msg_validated"),
+                        "kem_rc": r.get("kem_rc"),
+                        "ecdh_host_check": r.get("ecdh_host_check"),
+                        "rng_seed": r.get("rng_seed"),
                         "status": r["status"],
                     })
         build_rows = []

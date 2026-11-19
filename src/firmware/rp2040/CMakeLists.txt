@@ -64,14 +64,14 @@ else()
 endif()
 
 file(GLOB PQC_SOURCES "${PQC_DIR}/*.c")
-# Exclude vendored randombytes.c: glue.c routes randombytes() to harness_rng_read()
+# Exclude vendored randombytes.c: common/rng_glue.c routes randombytes() to harness_rng_read()
 list(FILTER PQC_SOURCES EXCLUDE REGEX "randombytes\\.c$")
 
 set(TARGET_NAME "firmware-${ALG}-${VARIANT}")
 
 add_executable(${TARGET_NAME}
     main.c
-    glue.c
+    ${COMMON_DIR}/rng_glue.c
     ${ADAPTER}
     ${PQC_SOURCES}
 )

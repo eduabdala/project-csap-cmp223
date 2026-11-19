@@ -1,10 +1,14 @@
 /*
- * glue.c — Routes the vendored algorithms' RNG to the harness entropy pool.
+ * rng_glue.c — Routes the vendored algorithms' RNG to the harness entropy pool.
  *
- * The vendored randombytes.c files are excluded from the RP2040 build (they
- * are host/AVR specific or deterministic stubs). Instead, every algorithm
- * draws from harness_rng_read() (main.c), which only copies from a pool that
- * is filled OUTSIDE the measured window.
+ * The vendored randombytes.c files are excluded from the AVR and RP2040
+ * builds: CTRU-Light ships a deterministic PRNG with a fixed seed (every reset
+ * replays the same keys) and micro-ecc's default_RNG is a fixed-start LCG.
+ * Instead, every algorithm draws from harness_rng_read() (main.c), which only
+ * copies from a pool that is filled OUTSIDE the measured window.
+ *
+ * kem_rng_install() must be called once at startup (micro-ecc needs the RNG
+ * registered through uECC_set_rng()).
  */
 #include <stddef.h>
 #include <stdint.h>

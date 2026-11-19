@@ -46,15 +46,15 @@ endif
 # Per-algorithm kem.h adapter + buffer sizes (override kem.h).
 ifeq ($(ALG),kyber512)
   ADAPTER  := kem_kyber512.c
-  SIZEDEFS := -DKEM_PUBLICKEYBYTES=800 -DKEM_SECRETKEYBYTES=1632 \
+  SIZEDEFS := -DALG_KYBER512=1 -DKEM_PUBLICKEYBYTES=800 -DKEM_SECRETKEYBYTES=1632 \
               -DKEM_CIPHERTEXTBYTES=768 -DKEM_BYTES=32
 else ifeq ($(ALG),ctru-light)
   ADAPTER  := kem_ctru.c
-  SIZEDEFS := -DKEM_PUBLICKEYBYTES=640 -DKEM_SECRETKEYBYTES=848 \
+  SIZEDEFS := -DALG_CTRU=1 -DKEM_PUBLICKEYBYTES=640 -DKEM_SECRETKEYBYTES=848 \
               -DKEM_CIPHERTEXTBYTES=512 -DKEM_BYTES=16
 else ifeq ($(ALG),ecdh)
   ADAPTER  := kem_ecdh.c
-  SIZEDEFS := -DKEM_PUBLICKEYBYTES=64 -DKEM_SECRETKEYBYTES=64 \
+  SIZEDEFS := -DALG_ECDH=1 -DKEM_PUBLICKEYBYTES=64 -DKEM_SECRETKEYBYTES=64 \
               -DKEM_CIPHERTEXTBYTES=64 -DKEM_BYTES=32 \
               $(if $(filter asm,$(VARIANT)),-DuECC_PLATFORM=uECC_avr -DuECC_OPTIMIZATION_LEVEL=2,-DuECC_PLATFORM=uECC_arch_other)
 endif
@@ -81,8 +81,11 @@ CFLAGS   := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -mcall-prologues -DF_CPU=$(F_CPU) 
 ASFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -x assembler-with-cpp $(SIZEDEFS)
 LDFLAGS  := -mmcu=$(MCU) $(DFP_FLAGS) -mrelax -Wl,--gc-sections -Wl,-Map,$(BUILD)/$(TARGET).map
 
-# main.c + algorithm adapter + vendored C sources (+ .S in the asm variant).
-CSRC     := main.c $(ADAPTER) $(wildcard $(PQCDIR)/*.c $(PQCDIR)/*/*.c)
+# main.c + algorithm adapter + RNG glue + vendored C sources (+ .S in the asm
+# variant). The vendored randombytes.c is excluded: rng_glue.c routes every
+# algorithm's randombytes()/uECC RNG to the harness pool (main.c).
+CSRC     := main.c $(ADAPTER) rng_glue.c \
+            $(filter-out %/randombytes.c,$(wildcard $(PQCDIR)/*.c $(PQCDIR)/*/*.c))
 INCLUDES := -I. -I$(COMMON) -I$(PQCDIR) $(addprefix -I,$(wildcard $(PQCDIR)/*/))
 
 # Objects are flattened into $(BUILD)/ (sources live in ../ so a path-preserving
