@@ -37,6 +37,50 @@ As figuras em `.tex` são compostas pelo próprio LaTeX do artigo, com a fonte d
 `acmart` (Linux Libertine). Para usar uma delas no `main.tex`:
 `\input{figures/latency.tex}` dentro do ambiente `figure`.
 
+## Metodologia
+
+### Classificação da pesquisa
+
+| Critério | Classificação | Por quê |
+| :--- | :--- | :--- |
+| Natureza | Aplicada | Busca uma resposta prática: qual KEM pós-quântico é viável num MCU de 8 bits. |
+| Abordagem | Quantitativa | Mede variáveis numéricas (latência, pilha, Flash) e as analisa com estatística. |
+| Objetivo | Explicativa, com parte descritiva | Descreve o desempenho de cada configuração e explica quanto cada fator contribui (η² da ANOVA). |
+| Procedimento técnico | Experimental | O pesquisador manipula os fatores (algoritmo, implementação, otimização), controla as condições e mede o efeito. |
+| Método científico | Hipotético-dedutivo | Parte de hipóteses (por exemplo, "o algoritmo domina a latência" ou "o assembly reduz o tempo") e as testa com Welch e ANOVA. |
+| Desenho | Fatorial completo 3 × 2 × 2 × 3 com repetições (Jain) | Combina todos os níveis de todos os fatores. |
+| Ambiente | Bancada, hardware real | É medição, não simulação nem modelagem analítica. |
+| Coleta | Instrumentação | Latência por analisador lógico no pino `PA0`; pilha por marcação da memória (`0xAA`); Flash pelos `.hex`. |
+| Análise | Estatística descritiva e inferencial | Média, IC 95%, Welch sobre log T, ANOVA tipo II e `emmeans`. |
+| Recorte temporal | Transversal, com várias sessões | Foram 19 campanhas entre 04/11 e 13/11, sem acompanhamento ao longo do tempo como objetivo. |
+
+Em resumo: é uma pesquisa aplicada, quantitativa e explicativa, de caráter experimental. Segue o método hipotético-dedutivo e um projeto fatorial completo, com medições em bancada num ATmega4809 e análise estatística inferencial.
+
+### Etapas da metodologia
+
+A metodologia segue a abordagem sistemática de avaliação de desempenho de Raj Jain (*The Art of Computer Systems Performance Analysis*, 1991): cap. 2 para as etapas, cap. 16 a 18 para o projeto fatorial e cap. 12 e 13 para a estatística.
+
+| Etapa | No projeto |
+| :--- | :--- |
+| 1. Objetivo e sistema | Avaliar se o Kyber-512 e o CTRU-Light são viáveis num MCU de 8 bits, comparando com o ECDH. O sistema medido é o ATmega4809 (Arduino Nano Every). |
+| 2. Serviços e resultados | KeyGen, Encaps, Decaps e MsgCrypt, cada um com resultado válido ou inválido. |
+| 3. Métricas | Latência, pico de pilha e Flash ocupada. A energia está prevista. |
+| 4. Parâmetros | Tudo o que afeta o desempenho: algoritmo, implementação, otimização, clock, tensão, temperatura, entrada. |
+| 5. Fatores e níveis | Algoritmo (3), implementação `ref`/`asm` (2), otimização `-O3`/`-Os` (2), operação (3). Os demais parâmetros ficam fixos (20 MHz, 5 V). |
+| 6. Técnica de avaliação | Medição em hardware real. |
+| 7. Carga de trabalho | Rodadas K → E → D → M com intervalo fixo, repetidas *n* vezes por configuração. |
+| 8. Planejamento | Fatorial completo com repetições (30, depois 150), ordem sorteada (`schedule.json`) e blocos por gravação de firmware (`--blocks`). |
+| 9. Coleta | O firmware abre uma janela no `PA0`, o analisador lógico mede a largura do pulso, e a telemetria segue pela UART com a validação do KEM. Os dados brutos ficam versionados em `data/experiments/`. |
+| 10. Análise e interpretação | Verificação das hipóteses (4-plots e testes de independência, estacionariedade e normalidade), descrição (média, IC 95%, mediana, CV), comparação (Welch sobre log T), modelo fatorial (ANOVA tipo II sobre log T com η²) e médias marginais (`emmeans`). |
+| 11. Apresentação | Figuras, tabelas LaTeX e artigo gerados pelo caderno Quarto, com fluxo reprodutível (Nix, Snakemake). |
+
+O método é cíclico: os resultados de uma rodada revisam as etapas anteriores. Os diagnósticos das baterias #17 a #19 mostraram três falhas de controle:
+- a ordem planejada não foi seguida;
+- CTRU-Light e ECDH usaram semente fixa;
+- o clock do MCU variou sem controle.
+
+Isso volta às etapas 4, 7 e 8: o clock e a temperatura passam a ser parâmetros registrados, a carga ganha aquecimento e sementes registradas, e o planejamento usa blocos sorteados. Depois disso vem uma nova campanha. Detalhes em `docs/diagnostico-4plots.md`.
+
 ```{r setup}
 suppressPackageStartupMessages({
   library(tidyverse)
