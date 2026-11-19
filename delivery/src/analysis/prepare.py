@@ -15,6 +15,9 @@ Saídas (results/processed/):
   flash_sizes.csv          Flash ocupada, lida dos .hex gravados (todas as otimizações)
   bench_O0_tidy.csv        campanha complementar sem otimização (-O0 + controles -O3)
   build_failures.csv       configurações que não compilaram (ex.: -O0 estoura a Flash)
+  la_clock.csv             por operação, dos CSVs do analisador: largura da janela e
+                           duração do trecho de ciclos fixos antes dela (pulsos de
+                           ID), que mede o clock real do MCU; e a taxa de amostragem
 
 Uso (a partir da raiz do repositório):
   python src/analysis/prepare.py
@@ -42,6 +45,11 @@ HEX = re.compile(
     r"firmware-(?P<alg>kyber512|ctru-light|ecdh)-(?P<variant>asm|ref)-[\d.]+MHz-(?P<opt>O[0-3sgz])\.hex"
 )
 FLASH_TOTAL_B = 49152
+LA_CSV = re.compile(
+    r"la_(?P<alg>kyber512|ctru-light|ecdh)_(?P<variant>asm|ref)"
+    r"(?:_(?P<opt>O[0-3sgz])_(?P<clk>[\d.]+)MHz)?(?:_b(?P<block>\d+))?\.csv"
+)
+LA_OPS = {1: "keygen", 2: "encaps", 3: "decaps", 4: "msgcrypt"}
 
 
 def find_root(start: Path) -> Path:
@@ -63,7 +71,7 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         algs_e, opts_e, n_e, has_t_la = set(), set(), 0, False
 
         if obs_csv.is_file():
-            obs_df = pd.read_csv(obs_csv)
+            obs_df = add_telemetry_fields(pd.read_csv(obs_csv), files)
             n_e = len(obs_df)
             algs_e.update(obs_df["algorithm"].astype(str).unique())
             opts_e.update(obs_df["optimization"].astype(str).unique())
@@ -105,7 +113,16 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         m_dt = re.match(r"exp_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})\d{2}_(.+)_\d{4}", e)
         dt_str = f"{m_dt.group(3)}/{m_dt.group(2)} {m_dt.group(4)}:{m_dt.group(5)}" if m_dt else e
         if has_t_la:
-            metodo = "LA 24MHz (PA0) + UART"
+            # O analisador suporta 24 MHz, mas as campanhas foram amostradas a
+            # --la-rate (padrão 100 kHz); a taxa real vem do cabeçalho do CSV.
+            taxas = set()
+            for f in la_files:
+                with open(f, encoding="ascii") as fh:
+                    mt = re.search(r"samplerate_hz=(\d+)", fh.readline())
+                if mt:
+                    taxas.add(int(mt.group(1)))
+            taxa = f"{min(taxas) // 1000} kHz" if taxas else "taxa ?"
+            metodo = f"LA {taxa} (PA0) + UART"
         elif la_files:
             metodo = "LA CSV parcial + UART"
         else:
@@ -116,6 +133,47 @@ def load_history(exp_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             "flags": ", ".join(sorted(opts_e)), "observacoes": n_e, "instrumentacao": metodo,
         })
     return add_execution_order(pd.DataFrame(rows)), pd.DataFrame(campaigns)
+
+
+TELEMETRY_EXTRA = ["timestamp", "t_total_ms", "kem_rc", "ecdh_host_check", "rng_seed"]
+
+
+def add_telemetry_fields(obs: pd.DataFrame, files: list[str]) -> pd.DataFrame:
+    """Completa o observations.csv com campos que só existem na telemetria.
+
+    O observations.csv das campanhas novas não traz timestamp nem t_total_ms
+    (necessários para a ordem real e a carga de trabalho). Cada telemetry_*.json
+    é uma configuração (e bloco), na ordem de execução; as linhas da mesma
+    configuração no observations.csv, ordenadas por run_order, correspondem
+    a ela registro a registro.
+    """
+    falta = [c for c in TELEMETRY_EXTRA if c not in obs]
+    if not falta or not files:
+        return obs
+    obs = obs.copy()
+    for c in falta:
+        obs[c] = None
+    chave = ["algorithm", "variant", "optimization"]
+    tem_bloco = "block" in obs
+    for f in files:
+        m = TELEMETRY.match(os.path.basename(f))
+        if not m:
+            continue
+        g = m.groupdict()
+        sel = ((obs.algorithm == g["alg"]) & (obs.variant == g["variant"])
+               & (obs.optimization == "-" + (g["opt"] or "O3")))
+        if tem_bloco and g["block"]:
+            sel &= obs.block == int(g["block"])
+        idx = obs.loc[sel].sort_values("run_order").index
+        with open(f, encoding="utf-8") as fh:
+            tel = json.load(fh)
+        if len(tel) != len(idx):
+            print(f"[prepare] aviso: {os.path.basename(f)} tem {len(tel)} registros e o "
+                  f"observations.csv {len(idx)}; campos da telemetria não copiados")
+            continue
+        for c in falta:
+            obs.loc[idx, c] = [r.get(c) for r in tel]
+    return obs
 
 
 def add_execution_order(hist: pd.DataFrame) -> pd.DataFrame:
@@ -148,6 +206,74 @@ def add_execution_order(hist: pd.DataFrame) -> pd.DataFrame:
     for col in cols:
         hist[col] = hist[col].astype("Int64")
     return hist
+
+
+def la_clock_file(path: str) -> tuple[pd.DataFrame, int]:
+    """Extrai, de um CSV do analisador, uma linha por operação medida.
+
+    Antes de cada janela o firmware emite n pulsos de ID (n = 1..4 para
+    K/E/D/M) gerados por delay_ms_approx(), um laço com número fixo de ciclos.
+    O trecho da 1ª subida de ID até a subida da janela (ref_ms) tem, portanto,
+    duração proporcional ao período do clock do MCU: ref_ms / mediana(ref_ms)
+    é o clock relativo da operação (> 1 = MCU mais lento).
+    """
+    with open(path, encoding="ascii") as fh:
+        m = re.search(r"samplerate_hz=(\d+)", fh.readline())
+    rate = int(m.group(1)) if m else -1
+    la = pd.read_csv(path, comment="#", header=0, usecols=[1, 2], names=["t", "d"],
+                     dtype={"t": "float64", "d": "int8"}, engine="c")
+    d = la.d.to_numpy()
+    idx = np.flatnonzero(np.diff(d) != 0) + 1
+    t, v = la.t.to_numpy()[idx], d[idx]
+    sub, des = t[v == 1], t[v == 0]
+    if len(sub) == 0:
+        return pd.DataFrame(), rate
+    des = des[des > sub[0]]
+    k = min(len(sub), len(des))
+    w = (des[:k] - sub[:k]) * 1000
+    s0 = sub[:k]
+    # Pulsos de ID: alguns ms (o laço de atraso muda com -O3/-Os). Janelas: > 40 ms
+    # (K/E/D) ou ~0,02 ms (M).
+    eh_id = (w > 0.5) & (w < 20)
+    rows, j = [], 0
+    while j < k:
+        if not eh_id[j]:
+            j += 1
+            continue
+        j0 = j
+        while j < k and eh_id[j]:
+            j += 1
+        if j < k and (j - j0) in LA_OPS:
+            rows.append((LA_OPS[j - j0], (s0[j] - s0[j0]) * 1000, w[j], s0[j]))
+        j += 1
+    out = pd.DataFrame(rows, columns=["operation", "ref_ms", "lat_la_ms", "t_s"])
+    out["i"] = out.groupby("operation").cumcount()
+    return out, rate
+
+
+def load_la_clock(exp_dir: Path, cache: Path | None = None) -> pd.DataFrame:
+    """la_clock_file() para todos os CSVs do analisador, com cache por data de modificação."""
+    files = sorted(glob.glob(str(exp_dir / "exp_*" / "raw" / "la_*.csv")))
+    if cache is not None and cache.is_file() and files and \
+            cache.stat().st_mtime > max(os.path.getmtime(f) for f in files):
+        return pd.read_csv(cache)
+    parts = []
+    for f in files:
+        m = LA_CSV.match(os.path.basename(f))
+        if not m:
+            continue
+        g = m.groupdict()
+        ops, rate = la_clock_file(f)
+        if ops.empty:
+            continue
+        parts.append(ops.assign(
+            experiment=Path(f).parts[-3], algorithm=g["alg"], variant=g["variant"],
+            optimization="-" + (g["opt"] or "O3"), clock_mhz=float(g["clk"] or 20),
+            block=int(g["block"]) if g["block"] else 1, samplerate_hz=rate))
+    res = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    if cache is not None:
+        res.to_csv(cache, index=False)
+    return res
 
 
 def hex_bytes(path: str) -> int:
@@ -231,8 +357,11 @@ def main() -> None:
 
     load_flash(exp_dir).to_csv(out / "flash_sizes.csv", index=False)
 
+    clk = load_la_clock(exp_dir, cache=out / "la_clock.csv")
+
     print(f"[prepare] {len(campaigns)} campanhas, {len(hist)} observações; "
-          f"campanha LA: {len(df)} observações; campanha -O0: {len(o0)} observações -> {out}")
+          f"campanha LA: {len(df)} observações; campanha -O0: {len(o0)} observações; "
+          f"la_clock: {len(clk)} operações -> {out}")
 
 
 if __name__ == "__main__":

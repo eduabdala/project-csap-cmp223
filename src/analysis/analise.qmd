@@ -631,6 +631,293 @@ Como usar os resultados acima:
   média se apoia no teorema central do limite (válido para $n \geq 30$ sem
   caudas pesadas).
 
+### 3.3 Causas dos padrões: o que ficou fora de controle
+
+Os 4-plots mostram degraus, padrões periódicos, autocorrelação e tendências.
+Esta seção separa as causas com os dados brutos: o instrumento, a entrada
+(semente), a ordem de execução, a carga de trabalho e o clock do MCU. O
+diagnóstico completo, com as ações, está em `docs/diagnostico-4plots.md`.
+
+**Instrumento.** O analisador suporta 24 MHz, mas a taxa usada vem do
+cabeçalho de cada CSV (`--la-rate` do `trigger.py`). A resolução da latência é
+o inverso dessa taxa. A tabela abaixo mostra quantos valores distintos cabem
+no modo principal de cada célula.
+
+```{r ctrl-instrumento}
+clk_raw <- read_csv(file.path(DIRS$out, "la_clock.csv"), show_col_types = FALSE)
+clk_raw |>
+  distinct(experiment, samplerate_hz) |>
+  left_join(camp |> select(experiment, campanha), by = "experiment") |>
+  transmute(campanha, experiment, samplerate_hz, resolucao_us = 1e6 / samplerate_hz)
+
+# Modo principal: Kyber e CTRU-Light têm modos separados por > 6 ms; o ECDH é contínuo.
+modo_principal <- function(d, col = "y") {
+  d |>
+    mutate(.base = min(.data[[col]]), .by = c(bateria, all_of(CELULA))) |>
+    filter(algorithm == "ecdh" | .data[[col]] < .base + 3) |>
+    select(-.base)
+}
+quant <- bat |>
+  filter(operation != "msgcrypt") |>
+  modo_principal() |>
+  summarise(n = n(), distintos = n_distinct(y),
+            passo_min_ms = { u <- sort(unique(y)); if (length(u) > 1) min(diff(u)) else NA_real_ },
+            faixa_ms = diff(range(y)), .by = c(bateria, alg, rotulo_cfg, op))
+quant |>
+  summarise(células = n(), distintos_mediana = median(distintos),
+            passo_min_ms = min(passo_min_ms, na.rm = TRUE),
+            faixa_ms_min = min(faixa_ms), faixa_ms_max = max(faixa_ms), .by = c(bateria, alg))
+
+# MsgCrypt dura ~2 amostras: a fração de leituras de 0,03 ms reflete só o arredondamento.
+bat |>
+  filter(operation == "msgcrypt") |>
+  summarise(fracao_0.03ms = round(mean(y > 0.025), 3), .by = c(bateria, optimization)) |>
+  pivot_wider(names_from = optimization, values_from = fracao_0.03ms)
+```
+
+**Validação.** Fração de Decaps cujo segredo bate com o do Encaps
+(`kem_validated`), por configuração, nas baterias desta seção. `NA` indica
+rodadas sem validação registrada.
+
+```{r ctrl-validacao}
+df_hist |>
+  filter(experiment %in% unique(bat$experiment), operation == "decaps") |>
+  mutate(validacao = case_when(kem_validated %in% TRUE ~ "ok", kem_validated %in% FALSE ~ "falhou",
+                               TRUE ~ "sem_registro")) |>
+  count(algoritmo = LABEL[algorithm], variant, optimization, validacao) |>
+  pivot_wider(names_from = validacao, values_from = n, values_fill = 0)
+```
+
+**Entrada fixa (semente).** Até o commit `6374aca`, o CTRU-Light usava o
+gerador do vendor e o ECDH o `default_RNG` do micro-ecc, os dois com semente
+constante. Cada gravação repete a mesma sequência de chaves. Se isso
+acontece, as rejeições do CTRU-Light seguem o mesmo padrão em toda
+configuração e bateria. Além disso, a mesma repetição $i$ se correlaciona
+entre baterias.
+
+```{r ctrl-semente}
+bat |>
+  filter(algorithm == "ctru-light", operation %in% c("keygen", "encaps")) |>
+  mutate(lenta = y > min(y) + 3, .by = c(bateria, all_of(CELULA))) |>
+  arrange(i) |>
+  summarise(lentas = sum(lenta), n = n(),
+            padrao_20 = paste(if_else(head(lenta, 20), "L", "r"), collapse = ""),
+            .by = c(bateria, op, rotulo_cfg)) |>
+  arrange(op, bateria, rotulo_cfg)
+
+# Mesma repetição i nas duas baterias mais recentes com n >= 100 (CTRU-Light e ECDH)
+bat_n <- bat |> count(bateria, rotulo_cfg, op) |> filter(n >= 100) |> distinct(bateria) |>
+  pull(bateria) |> sort() |> tail(2) |> as.character()
+if (length(bat_n) == 2) {
+  entre_bat <- bat |>
+    filter(as.character(bateria) %in% bat_n, algorithm %in% c("ctru-light", "ecdh"),
+           operation != "msgcrypt") |>
+    mutate(lenta = algorithm != "ecdh" & y > min(y) + 3, .by = c(bateria, all_of(CELULA))) |>
+    select(bateria, alg, rotulo_cfg, op, i, y, lenta) |>
+    mutate(bateria = if_else(as.character(bateria) == bat_n[1], "a", "b")) |>
+    pivot_wider(names_from = bateria, values_from = c(y, lenta)) |>
+    filter(!is.na(y_a), !is.na(y_b), !lenta_a, !lenta_b) |>
+    summarise(n = n(), r_mesmo_indice = cor(y_a, y_b),
+              p = cor.test(y_a, y_b)$p.value,
+              dif_mediana_us = 1000 * median(abs(y_b - y_a)),
+              .by = c(alg, rotulo_cfg, op))
+  cat("Baterias comparadas:", bat_n, "\n")
+  entre_bat |> mutate(across(where(is.double), \(x) signif(x, 3)))
+}
+```
+
+**Kyber-512: rodadas lentas e entrada compartilhada.** KeyGen, Encaps e
+Decaps da mesma rodada usam a mesma matriz $A$, gerada a partir da semente
+pública. Se o segundo modo vem da entrada, as três operações ficam lentas
+juntas. Se a dispersão do modo principal também vem da entrada, KeyGen e
+Encaps da mesma rodada variam juntos, mesmo depois de remover a deriva com
+uma média móvel de 15 rodadas.
+
+```{r ctrl-kyber}
+media_movel <- function(x, w = 15) {
+  if (length(x) < w) return(rep(NA_real_, length(x)))
+  as.numeric(stats::filter(x, rep(1 / w, w), sides = 2))
+}
+ky <- bat |>
+  filter(algorithm == "kyber512", operation != "msgcrypt") |>
+  mutate(lenta = y > min(y) + 3, .by = c(bateria, all_of(CELULA))) |>
+  select(bateria, rotulo_cfg, i, operation, lenta, y) |>
+  pivot_wider(names_from = operation, values_from = c(lenta, y))
+ky |> count(lenta_keygen, lenta_encaps, lenta_decaps, name = "rodadas")
+ky |>
+  filter(!lenta_keygen, !lenta_encaps, !lenta_decaps) |>
+  arrange(i) |>
+  summarise(n = n(), r_K_E = cor(y_keygen, y_encaps), r_K_D = cor(y_keygen, y_decaps),
+            r_K_E_sem_deriva = .p(cor(y_keygen - media_movel(y_keygen),
+                                      y_encaps - media_movel(y_encaps), use = "complete.obs")),
+            .by = c(bateria, rotulo_cfg)) |>
+  mutate(across(where(is.double), \(x) round(x, 3)))
+```
+
+**Ordem de execução.** As campanhas gravam o plano em `schedule.json`. A
+tabela compara as quatro primeiras configurações do plano com as quatro
+primeiras executadas (pelo `timestamp`).
+
+```{r ctrl-ordem}
+plano_cfg <- function(e) {
+  arq <- file.path(DIRS$exp, e, "schedule.json")
+  if (!file.exists(arq)) return(NA_character_)
+  s <- jsonlite::read_json(arq, simplifyVector = TRUE)
+  if ("block_order" %in% names(s)) s <- s[order(s$block_order), ]
+  unique(paste(s$alg, s$variant, s$opt))
+}
+ordem_exec <- bat |>
+  summarise(inicio = min(ordem), .by = c(bateria, experiment, cfg)) |>
+  arrange(bateria, inicio) |>
+  summarise(executada = list(cfg), .by = c(bateria, experiment))
+ordem_exec |>
+  mutate(planejada = map(experiment, plano_cfg),
+         segue_plano = map2_lgl(executada, planejada, \(a, b) identical(a, b[b %in% a])),
+         executada_4 = map_chr(executada, \(x) paste(head(x, 4), collapse = " → ")),
+         planejada_4 = map_chr(planejada, \(x) paste(head(x, 4), collapse = " → "))) |>
+  select(bateria, segue_plano, executada_4, planejada_4)
+```
+
+**Carga de trabalho por bloco.**
+- **Ciclo de trabalho:** fração do tempo do bloco com a janela de medição ativa.
+- **Serial:** fração gasta transferindo chaves e cifras.
+- **Intervalo ocioso:** tempo entre o fim de uma operação e o início da seguinte.
+- **Pausa:** tempo entre o fim do bloco anterior e o início deste (gravação e reset).
+
+O MCU não dorme entre operações (fica em espera ativa em `uart_rx`).
+
+```{r ctrl-carga}
+carga <- bat |>
+  arrange(bateria, ordem) |>
+  summarise(inicio = min(timestamp), fim = max(timestamp),
+            ocupado_s = sum(y) / 1000,
+            serial_s = sum(pmax(t_total_ms - t_exec_ms, 0), na.rm = TRUE) / 1000,
+            gap_ocioso_ms = median(1000 * diff(as.numeric(timestamp)) - t_total_ms[-1], na.rm = TRUE),
+            .by = c(bateria, bloco, alg, rotulo_cfg)) |>
+  arrange(bateria, inicio) |>
+  mutate(dur_min = as.numeric(difftime(fim, inicio, units = "mins")),
+         ciclo_trabalho_pct = 100 * ocupado_s / (60 * dur_min),
+         serial_pct = 100 * serial_s / (60 * dur_min),
+         pausa_antes_s = as.numeric(difftime(inicio, lag(fim), units = "secs")),
+         .by = bateria)
+write_csv(carga, file.path(DIRS$out, "carga_blocos.csv"))
+carga |>
+  select(bateria, rotulo_cfg, dur_min, ciclo_trabalho_pct, serial_pct, gap_ocioso_ms, pausa_antes_s) |>
+  mutate(across(where(is.double), \(x) round(x, 1)))
+```
+
+**Clock do MCU.** Antes de cada janela, o firmware emite os pulsos de ID com
+`delay_ms_approx()`, um laço com número fixo de ciclos. O trecho da primeira
+subida de ID até a subida da janela (`ref_ms` em `la_clock.csv`) mede, então,
+o período real do clock do MCU em cada operação; o analisador mede tempo com o
+próprio cristal.
+
+Comparo, por célula e no modo principal:
+- a amplitude da média móvel (15 operações) do clock relativo e da latência
+  relativa;
+- a correlação entre as duas médias móveis;
+- a tendência (Spearman) da latência medida e da latência dividida pelo clock
+  medido.
+
+Se a correção remove a tendência, a deriva vem do oscilador. A mesma tabela
+mede o aquecimento: a diferença entre as 10 primeiras operações de cada bloco
+e as demais.
+
+```{r ctrl-clock}
+clk <- clk_raw |>
+  filter(experiment %in% unique(bat$experiment), operation != "msgcrypt") |>
+  left_join(camp |> select(experiment, campanha, data_hora), by = "experiment") |>
+  mutate(bateria = factor(paste0(campanha, " (", data_hora, ")"), levels = levels(bat$bateria)),
+         alg = factor(LABEL[algorithm], levels = ALG_NIVEIS),
+         op = factor(OP_ROTULO[operation], levels = OP_ROTULO),
+         rotulo_cfg = paste(alg, variant, optimization)) |>
+  mutate(.base = min(lat_la_ms), .by = c(experiment, all_of(CELULA), block)) |>
+  filter(algorithm == "ecdh" | lat_la_ms < .base + 3) |>
+  arrange(t_s) |>
+  mutate(k = row_number(), clk_rel = ref_ms / median(ref_ms), lat_rel = lat_la_ms / median(lat_la_ms),
+         lat_corrigida_ms = lat_la_ms / clk_rel,
+         .by = c(experiment, all_of(CELULA), block)) |>
+  select(-.base)
+write_csv(clk, file.path(DIRS$out, "la_clock_corrigido.csv"))
+
+amplitude_pct <- function(x) {
+  m <- media_movel(x)
+  if (all(is.na(m))) NA_real_ else 100 * diff(range(m, na.rm = TRUE))
+}
+clk_res <- clk |>
+  summarise(
+    n = n(),
+    amp_clock_pct = amplitude_pct(clk_rel),
+    amp_latencia_pct = amplitude_pct(lat_rel),
+    r_clock_latencia = .p(cor(media_movel(clk_rel), media_movel(lat_rel), use = "complete.obs")),
+    rho_medida = cor(k, lat_la_ms, method = "spearman"),
+    rho_corrigida = cor(k, lat_corrigida_ms, method = "spearman"),
+    aquec_latencia_pct = 100 * (mean(lat_rel[k <= 10]) - mean(lat_rel[k > 10])),
+    aquec_clock_pct = 100 * (mean(clk_rel[k <= 10]) - mean(clk_rel[k > 10])),
+    aquec_p = .p(wilcox.test(lat_rel[k <= 10], lat_rel[k > 10], exact = FALSE)$p.value),
+    .by = c(bateria, alg, rotulo_cfg, op)) |>
+  arrange(bateria, alg, rotulo_cfg, op)
+write_csv(clk_res, file.path(DIRS$out, "clock_vs_latencia.csv"))
+clk_res |>
+  summarise(células = n(),
+            amp_clock_pct = median(amp_clock_pct, na.rm = TRUE),
+            amp_latencia_pct = median(amp_latencia_pct, na.rm = TRUE),
+            r_mediana = median(r_clock_latencia, na.rm = TRUE),
+            r_maior_055 = sum(r_clock_latencia >= 0.55, na.rm = TRUE),
+            rho_medida_abs = median(abs(rho_medida)), rho_corrigida_abs = median(abs(rho_corrigida)),
+            .by = bateria) |>
+  mutate(across(where(is.double), \(x) round(x, 3)))
+clk_res |>
+  select(bateria, rotulo_cfg, op, n, amp_clock_pct, amp_latencia_pct, r_clock_latencia,
+         rho_medida, rho_corrigida, aquec_latencia_pct, aquec_clock_pct, aquec_p) |>
+  mutate(across(where(is.double), \(x) signif(x, 3)))
+
+ult <- tail(levels(droplevels(clk$bateria)), 1)
+d_clk <- clk |>
+  filter(bateria == ult, operation == "decaps") |>
+  arrange(k) |>
+  mutate(Clock = 100 * (media_movel(clk_rel) - 1), `Latência` = 100 * (media_movel(lat_rel) - 1),
+         .by = rotulo_cfg) |>
+  pivot_longer(c(Clock, `Latência`), names_to = "serie", values_to = "desvio_pct") |>
+  filter(!is.na(desvio_pct))
+fig_clock <- function() {
+  ggplot(d_clk, aes(k, desvio_pct, colour = serie)) +
+    geom_hline(yintercept = 0, linewidth = 0.3, colour = "grey60") +
+    geom_line(linewidth = 0.5) +
+    facet_wrap(~rotulo_cfg, ncol = 4) +
+    scale_colour_manual(values = c(Clock = "grey25", `Latência` = VERMELHO),
+                        labels = c(Clock = "Período do clock do MCU (trecho de ciclos fixos)",
+                                   `Latência` = "Latência do Decaps")) +
+    labs(title = paste("Bateria", ult, "· média móvel de 15 operações"),
+         x = "Operação dentro do bloco", y = "Desvio da mediana do bloco (%)")
+}
+mostrar(salvar_diag(fig_clock(), file.path(DIAG_DIR, "clock_vs_latencia.png"),
+                    larg = 11, alt = 5, legenda = "top"))
+```
+
+Resumo do que esta seção mostra (valores da bateria #19 em
+`docs/diagnostico-4plots.md`):
+
+- **Quantização:** as campanhas foram amostradas a 100 kHz (10 µs). Isso explica os degraus nos gráficos
+  de probabilidade normal, a grade nos *lag plots* e o MsgCrypt entre 0,02 e
+  0,03 ms.
+- **ECDH `asm`:** não valida em nenhuma execução; os tempos não são de uma troca de chaves
+  correta.
+- **Semente fixa:** o padrão de rejeições do CTRU-Light se repete em toda configuração e
+  bateria, e a mesma repetição se correlaciona entre baterias no CTRU-Light e
+  no ECDH. É pseudorreplicação. Corrigido no firmware em `6374aca`.
+- **Kyber:** as rodadas lentas coincidem nas três operações, e a dispersão do modo
+  principal é compartilhada entre KeyGen e Encaps da mesma rodada. As duas
+  coisas vêm da entrada (matriz $A$), não do instrumento.
+- **Ordem:** as baterias não seguiram o `schedule.json`; rodaram na ordem fixa do
+  código, com um bloco por configuração.
+- **Carga:** o ciclo de trabalho vai de cerca de 35% (CTRU-Light) a 99% (ECDH), sem
+  relação com a deriva.
+- **Clock do MCU:** a deriva da latência acompanha o período do clock do MCU. A
+  latência dividida pelo clock medido perde a tendência
+  (`la_clock_corrigido.csv`). O aquecimento no início dos blocos do
+  CTRU-Light também aparece no clock.
+
 ## 4. Sumário estatístico (média, IC 95% t-Student, mediana, IQR e pilha)
 
 ```{r sumario}
